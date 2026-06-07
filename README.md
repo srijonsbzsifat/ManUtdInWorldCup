@@ -60,15 +60,6 @@ Edit `src/lib/players.ts` — add or remove a player and they appear across the 
 
 ---
 
-## Deploy to Vercel
-
-1. Push to GitHub.
-2. Import at [vercel.com/new](https://vercel.com/new).
-3. No build settings need changing — Vercel auto-detects Next.js.
-4. Deploy. Every commit to `main` triggers a production build.
-
----
-
 ## Project structure
 
 ```

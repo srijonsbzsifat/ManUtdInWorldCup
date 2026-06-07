@@ -1,0 +1,39 @@
+import { NextResponse } from "next/server";
+import { fetchAllFixtures, fetchMatchDetails } from "@/lib/espn";
+import { NATIONAL_TEAMS } from "@/lib/players";
+import { computeTournamentStats, topPerformers } from "@/lib/aggregator";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 30;
+
+export async function GET() {
+  try {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(start.getDate() - 30);
+    const end = new Date(today);
+    end.setDate(end.getDate() + 30);
+
+    const fixtures = await fetchAllFixtures({ dateRange: { start, end } });
+    const nationCodes = new Set(NATIONAL_TEAMS.map((t) => t.code));
+    const relevant = fixtures.filter(
+      (m) => nationCodes.has(m.home.code) || nationCodes.has(m.away.code)
+    );
+    const detailed = await Promise.all(relevant.map((m) => fetchMatchDetails(m)));
+    const stats = computeTournamentStats(detailed);
+
+    return NextResponse.json({
+      stats,
+      topScorers: topPerformers(stats, "goals", 5),
+      topRated: topPerformers(stats, "averageRating", 5),
+      matchesAnalysed: detailed.filter((m) => m.lineups).length,
+      totalFixtures: relevant.length,
+    });
+  } catch (err) {
+    console.error("stats failed", err);
+    return NextResponse.json(
+      { error: "Failed to compute stats", detail: String(err) },
+      { status: 500 }
+    );
+  }
+}

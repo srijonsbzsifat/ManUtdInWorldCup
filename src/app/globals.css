@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --united-red: #da291c;
+  --united-gold: #fbe122;
+  --united-bg: #0a0a0a;
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--united-bg);
+  color: #f5f5f5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/[0.03] border border-white/[0.06] rounded-2xl backdrop-blur-sm;
+  }
+  .glass-hover {
+    @apply hover:bg-white/[0.06] hover:border-white/[0.12] transition-all duration-200;
+  }
+  .stat-card {
+    @apply glass p-4 flex flex-col gap-1;
+  }
+  .stat-label {
+    @apply text-[11px] uppercase tracking-wider text-white/50 font-medium;
+  }
+  .stat-value {
+    @apply text-2xl font-bold text-white tabular-nums;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .live-dot {
+    @apply inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse-fast;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  .skeleton {
+    @apply bg-white/[0.04] animate-pulse rounded-md;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Hide scrollbar on horizontal lists but keep functionality. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

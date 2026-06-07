@@ -13,6 +13,15 @@ import { UNITED_PLAYERS, matchUnitedPlayer, normaliseName } from "@/lib/players"
 /* Single source of truth - we compute everything from Match[]                */
 /* -------------------------------------------------------------------------- */
 
+const WC_START = new Date("2026-06-11T00:00:00Z");
+
+function shouldCountMatch(match: Match): boolean {
+  if (Date.now() >= WC_START.getTime()) {
+    return match.matchType === "world_cup";
+  }
+  return true;
+}
+
 function emptyStats(playerId: string): PlayerTournamentStats {
   return {
     playerId,
@@ -55,6 +64,7 @@ export function computeTournamentStats(
   for (const match of matches) {
     if (!match.lineups) continue;
     if (!["FINISHED", "IN_PLAY", "PAUSED"].includes(match.status)) continue;
+    if (!shouldCountMatch(match)) continue;
     // Compute the team-level clean-sheet flag once per side so the GK and
     // defenders can be credited correctly (we deliberately do NOT rely on
     // ESPN's per-player `goalsConceded` because it reflects goals conceded
@@ -136,6 +146,7 @@ export function computePlayerPerformances(
   const out: PlayerMatchPerformance[] = [];
   for (const match of matches) {
     if (!match.lineups) continue;
+    if (!shouldCountMatch(match)) continue;
     const all = [...match.lineups.home, ...match.lineups.away];
     const own = all.find((p) => p.unitedPlayerId === playerId);
     if (!own) continue;

@@ -56,7 +56,7 @@ function mapStatus(raw: any): { status: MatchStatus; minute: number | string | n
   if (status === "IN_PLAY" || status === "PAUSED") {
     if (status === "PAUSED") minute = "HT";
     else {
-      const match = /(\d+)/.exec(raw?.displayClock ?? raw?.clock ?? raw?.detail ?? raw?.shortDetail ?? "");
+      const match = /(\d+)/.exec(raw?.displayClock || raw?.clock || raw?.detail || raw?.shortDetail || "");
       if (match) minute = parseInt(match[1], 10);
       else if (typeof raw?.clock === "number") minute = raw.clock;
     }

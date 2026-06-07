@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Manchester United @ World Cup",
   description:
     "Live stats, ratings, goals and assists for every Manchester United player representing their nation at the FIFA World Cup and international friendlies.",
+  icons: { icon: "/manutd-crest.png" },
   applicationName: "ManUtdInWorldCup",
   authors: [{ name: "ManUtdInWorldCup" }],
   openGraph: {

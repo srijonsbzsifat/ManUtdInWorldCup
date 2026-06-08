@@ -9,10 +9,9 @@ import type {
   PlayerMatchPerformance,
   PlayerTournamentStats,
 } from "@/types";
+import { useMemo } from "react";
 import { formatDate, formatTime, relativeTime, cn, ratingColor, ratingLabel } from "@/lib/utils";
 import Link from "next/link";
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface PlayerResponse {
   player: UnitedPlayer;
@@ -25,7 +24,6 @@ export default function PlayerPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data, error, isLoading } = useSWR<PlayerResponse>(
     `/api/players/${id}`,
-    fetcher,
     { refreshInterval: 60_000 }
   );
 
@@ -278,11 +276,16 @@ function Tag({ icon, label, highlight }: { icon: string; label: string; highligh
 
 function RecentStats({ performances }: { performances: PlayerMatchPerformance[] }) {
   if (performances.length === 0) return null;
-  const last5 = performances.slice(0, 5).reverse();
-  const ratings = last5.map((p) => p.player.rating).filter((r): r is number => r !== null && r !== undefined);
-  const avg = ratings.length ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(2) : "—";
-  const goals = last5.reduce((s, p) => s + (p.player.goals ?? 0), 0);
-  const assists = last5.reduce((s, p) => s + (p.player.assists ?? 0), 0);
+  const { last5, avg, goals, assists } = useMemo(() => {
+    const l5 = performances.slice(0, 5).reverse();
+    const ratings = l5.map((p) => p.player.rating).filter((r): r is number => r !== null && r !== undefined);
+    return {
+      last5: l5,
+      avg: ratings.length ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(2) : "—",
+      goals: l5.reduce((s, p) => s + (p.player.goals ?? 0), 0),
+      assists: l5.reduce((s, p) => s + (p.player.assists ?? 0), 0),
+    };
+  }, [performances]);
   return (
     <section>
       <h2 className="text-lg font-semibold mb-3">Form (last 5)</h2>

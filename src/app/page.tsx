@@ -8,8 +8,6 @@ import useSWR from "swr";
 import type { Match } from "@/types";
 import Link from "next/link";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 export default function HomePage() {
   return (
     <div className="space-y-10 animate-fade-in">
@@ -88,7 +86,7 @@ function Section({
 }
 
 function UpcomingMatches() {
-  const { data, isLoading } = useSWR<{ matches: Match[] }>("/api/matches?status=upcoming", fetcher, {
+  const { data, isLoading } = useSWR<{ matches: Match[] }>("/api/matches?status=upcoming", {
     refreshInterval: 60_000,
   });
   const matches = (data?.matches ?? []).slice(0, 6);

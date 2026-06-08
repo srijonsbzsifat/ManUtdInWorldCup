@@ -59,25 +59,27 @@ export function computeTournamentStats(
   matches: Match[]
 ): Record<string, PlayerTournamentStats> {
   const statsByPlayer: Record<string, PlayerTournamentStats> = {};
-  for (const p of UNITED_PLAYERS) statsByPlayer[p.id] = emptyStats(p.id);
+  const ratingAccum: Record<string, { sum: number; count: number }> = {};
+  for (const p of UNITED_PLAYERS) {
+    statsByPlayer[p.id] = emptyStats(p.id);
+    ratingAccum[p.id] = { sum: 0, count: 0 };
+  }
 
   for (const match of matches) {
     if (!match.lineups) continue;
     if (!["FINISHED", "IN_PLAY", "PAUSED"].includes(match.status)) continue;
     if (!shouldCountMatch(match)) continue;
-    // Compute the team-level clean-sheet flag once per side so the GK and
-    // defenders can be credited correctly (we deliberately do NOT rely on
-    // ESPN's per-player `goalsConceded` because it reflects goals conceded
-    // while the player was on the pitch, not the team's final clean sheet).
     const homeCleanSheet = (match.score.away ?? 0) === 0;
     const awayCleanSheet = (match.score.home ?? 0) === 0;
-    processLineup(match.lineups.home, "home", match, statsByPlayer, homeCleanSheet);
-    processLineup(match.lineups.away, "away", match, statsByPlayer, awayCleanSheet);
+    processLineup(match.lineups.home, "home", match, statsByPlayer, ratingAccum, homeCleanSheet);
+    processLineup(match.lineups.away, "away", match, statsByPlayer, ratingAccum, awayCleanSheet);
   }
 
-  // Compute derived metrics.
+  // Compute derived metrics and finalise average rating from accumulator.
   for (const id of Object.keys(statsByPlayer)) {
     const s = statsByPlayer[id];
+    const acc = ratingAccum[id];
+    s.averageRating = acc.count > 0 ? +(acc.sum / acc.count).toFixed(2) : null;
     s.goalsPerMatch = s.matches ? +(s.goals / s.matches).toFixed(2) : 0;
     s.minutesPerGoal = s.goals ? Math.round(s.minutesPlayed / s.goals) : null;
   }
@@ -90,6 +92,7 @@ function processLineup(
   side: "home" | "away",
   match: Match,
   statsByPlayer: Record<string, PlayerTournamentStats>,
+  ratingAccum: Record<string, { sum: number; count: number }>,
   teamCleanSheet: boolean
 ) {
   for (const player of lineup) {
@@ -124,8 +127,8 @@ function processLineup(
       }
     }
     if (player.rating !== null && player.rating !== undefined) {
-      if (stats.averageRating === null) stats.averageRating = player.rating;
-      else stats.averageRating = (stats.averageRating * (stats.matches - 1) + player.rating) / stats.matches;
+      ratingAccum[player.unitedPlayerId].sum += player.rating;
+      ratingAccum[player.unitedPlayerId].count += 1;
       if (stats.bestRating === null || player.rating > stats.bestRating) stats.bestRating = player.rating;
       if (stats.worstRating === null || player.rating < stats.worstRating) stats.worstRating = player.rating;
     }

@@ -1,4 +1,5 @@
 "use client";
+import { useMemo } from "react";
 import useSWR from "swr";
 import { PlayerCard } from "./PlayerCard";
 import { LoadingSpinner } from "./LoadingSpinner";
@@ -12,16 +13,22 @@ interface StatsResponse {
   totalFixtures: number;
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 export function StatsLeaderboard({
   players,
 }: {
   players: UnitedPlayer[];
 }) {
-  const { data, isLoading, error } = useSWR<StatsResponse>("/api/stats", fetcher, {
+  const { data, isLoading, error } = useSWR<StatsResponse>("/api/stats", {
     refreshInterval: 60_000,
   });
+
+  const ordered = useMemo(() => {
+    const stats = data?.stats ?? {};
+    return players
+      .map((p) => ({ player: p, stats: stats[p.id] }))
+      .filter((row) => row.stats)
+      .sort((a, b) => (b.stats.matches ?? 0) - (a.stats.matches ?? 0));
+  }, [data, players]);
 
   if (isLoading) {
     return <LoadingSpinner text="Loading stats..." />;
@@ -34,12 +41,6 @@ export function StatsLeaderboard({
       </div>
     );
   }
-
-  const stats = data?.stats ?? {};
-  const ordered = players
-    .map((p) => ({ player: p, stats: stats[p.id] }))
-    .filter((row) => row.stats)
-    .sort((a, b) => (b.stats.matches ?? 0) - (a.stats.matches ?? 0));
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

@@ -54,6 +54,9 @@ export function Select({
     <div ref={wrapperRef} className={`inline-flex ${className}`}>
       <button
         type="button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => (open ? setOpen(false) : openMenu())}
         className="flex items-center gap-2 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-united-red whitespace-nowrap"
       >
@@ -80,9 +83,12 @@ export function Select({
               minWidth: `${Math.max(menuPos.width, 160)}px`,
             }}
             className="z-50 bg-united-dark border border-white/10 rounded-lg shadow-xl py-1 max-h-60 overflow-y-auto"
+            role="listbox"
           >
             <button
               type="button"
+              role="option"
+              aria-selected={value === "All"}
               onMouseDown={(e) => { e.preventDefault(); onChange("All"); setOpen(false); }}
               className={`block w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/10 ${
                 value === "All" ? "text-white" : "text-white/60"
@@ -94,6 +100,8 @@ export function Select({
               <button
                 key={opt.value}
                 type="button"
+                role="option"
+                aria-selected={value === opt.value}
                 onMouseDown={(e) => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
                 className={`block w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/10 ${
                   value === opt.value ? "text-white" : "text-white/60"

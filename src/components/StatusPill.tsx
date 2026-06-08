@@ -21,7 +21,7 @@ export function StatusPill({ status, minute }: { status: MatchStatus; minute?: n
 
   return (
     <span className={cn("pill", cls)}>
-      {dot && <span className="live-dot" />}
+      {dot && <span className="live-dot" aria-hidden="true" />}
       {text}
     </span>
   );

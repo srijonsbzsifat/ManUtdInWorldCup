@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 const NAV = [
@@ -18,7 +19,7 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 group">
           <div className="w-14 h-14 flex items-center justify-center group-hover:scale-105 transition-transform">
-            <img src="/manutd-crest.png" alt="Manchester United" width="44" className="object-contain w-auto h-9" />
+            <Image src="/manutd-crest.png" alt="Manchester United" width={44} height={44} className="object-contain w-auto h-9" />
           </div>
           <div className="leading-tight">
             <div className="text-sm sm:text-base font-semibold">
@@ -36,6 +37,7 @@ export function Header() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   active
                     ? "bg-white/10 text-white"

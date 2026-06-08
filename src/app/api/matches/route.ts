@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchAllFixtures, fetchMatchDetails } from "@/lib/espn";
 import { NATIONAL_TEAMS } from "@/lib/players";
+import type { Match } from "@/types";
 
 export const revalidate = 30;
 
@@ -54,7 +55,10 @@ export async function GET(req: Request) {
     }
 
     if (withDetails) {
-      matches = await Promise.all(matches.map((m) => fetchMatchDetails(m)));
+      const results = await Promise.allSettled(matches.map((m) => fetchMatchDetails(m)));
+      matches = results
+        .filter((r): r is PromiseFulfilledResult<Match> => r.status === "fulfilled")
+        .map((r) => r.value);
     }
 
     return NextResponse.json({

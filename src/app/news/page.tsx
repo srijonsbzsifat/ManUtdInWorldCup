@@ -1,12 +1,11 @@
 "use client";
 import { useState, useMemo } from "react";
+import Image from "next/image";
 import useSWR from "swr";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { Select } from "@/components/Select";
 import { UNITED_PLAYERS } from "@/lib/players";
 import type { NewsItem } from "@/lib/news";
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 function timeAgo(iso: string): string {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -31,7 +30,6 @@ export default function NewsPage() {
 
   const { data, isLoading } = useSWR<{ news: NewsItem[] }>(
     "/api/news",
-    fetcher,
     { refreshInterval: 120_000 }
   );
 
@@ -88,9 +86,11 @@ function NewsCard({ item }: { item: NewsItem }) {
       <div className="flex items-start gap-3">
         <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
           {player?.imageUrl ? (
-            <img
+            <Image
               src={player.imageUrl}
               alt={item.playerName}
+              width={40}
+              height={40}
               className="w-full h-full object-cover"
             />
           ) : (

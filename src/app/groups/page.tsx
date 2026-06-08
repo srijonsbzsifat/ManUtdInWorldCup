@@ -1,11 +1,10 @@
 "use client";
 import useSWR from "swr";
 import Link from "next/link";
+import Image from "next/image";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import type { GroupInfo } from "@/app/api/groups/route";
 import { UNITED_PLAYERS } from "@/lib/players";
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 const muNationCodes = new Set(
   UNITED_PLAYERS.map((p) => p.nation.code)
@@ -14,7 +13,6 @@ const muNationCodes = new Set(
 export default function GroupsPage() {
   const { data, error, isLoading } = useSWR<{ groups: GroupInfo[] }>(
     "/api/groups",
-    fetcher,
     { refreshInterval: 60_000 }
   );
 
@@ -94,10 +92,12 @@ function GroupTable({ group }: { group: GroupInfo }) {
                   <td className="py-1.5 pr-2">
                     <div className="flex items-center gap-1.5">
                       {entry.logo && (
-                        <img
+                        <Image
                           src={entry.logo}
                           alt=""
-                          className="w-4 h-4 object-contain flex-shrink-0"
+                          width={16}
+                          height={16}
+                          className="object-contain flex-shrink-0"
                         />
                       )}
                       <span className="truncate font-medium">

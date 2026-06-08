@@ -8,8 +8,6 @@ import type { Match } from "@/types";
 import { NATIONAL_TEAMS } from "@/lib/players";
 import { cn } from "@/lib/utils";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 type Tab = "all" | "live" | "upcoming" | "finished";
 
 export default function MatchesPage() {
@@ -17,11 +15,8 @@ export default function MatchesPage() {
   const [nation, setNation] = useState<string>("All");
 
   const { data, isLoading } = useSWR<{ matches: Match[]; count: number }>(
-    tab === "all"
-      ? "/api/matches"
-      : `/api/matches?status=${tab}`,
-    fetcher,
-    { refreshInterval: 30_000 }
+    tab === "all" ? "/api/matches" : `/api/matches?status=${tab}`,
+    { refreshInterval: tab === "live" ? 15_000 : tab === "finished" ? 0 : 60_000 }
   );
 
   const matches = useMemo(() => {

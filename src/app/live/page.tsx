@@ -4,12 +4,9 @@ import { MatchCard } from "@/components/MatchCard";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import type { Match } from "@/types";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 export default function LivePage() {
   const { data, error, isLoading } = useSWR<{ live: Match[]; count: number; lastUpdated: string }>(
     "/api/live",
-    fetcher,
     { refreshInterval: 15_000, revalidateOnFocus: true }
   );
 

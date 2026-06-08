@@ -8,8 +8,6 @@ import type { PlayerTournamentStats } from "@/types";
 import { Select } from "@/components/Select";
 import { cn } from "@/lib/utils";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 const POSITIONS = ["All", "GK", "DF", "MF", "FW"] as const;
 
 export default function PlayersPage() {
@@ -19,7 +17,6 @@ export default function PlayersPage() {
 
   const { data, isLoading } = useSWR<{ stats: Record<string, PlayerTournamentStats> }>(
     "/api/stats",
-    fetcher,
     { refreshInterval: 60_000 }
   );
 

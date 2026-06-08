@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { Header } from "@/components/Header";
+import { SWRProvider } from "@/components/SWRProvider";
 
 export const metadata: Metadata = {
   title: "Manchester United @ World Cup",
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="font-sans">
+        <SWRProvider>
         <div className="min-h-screen flex flex-col">
           <Header />
           <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -62,6 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </p>
           </footer>
         </div>
+        </SWRProvider>
       </body>
     </html>
   );

@@ -9,14 +9,11 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { cn, formatDate, formatTimeLocal, ratingColor, ratingLabel } from "@/lib/utils";
 import { findUnitedPlayersInLineup } from "@/lib/aggregator";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 export default function MatchPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data, error, isLoading } = useSWR<{ match: Match }>(
     `/api/matches/${id}`,
-    fetcher,
-    { refreshInterval: 20_000 }
+    { refreshInterval: (d) => d?.match?.status === "FINISHED" ? 0 : 20_000 }
   );
 
   if (isLoading) {
@@ -311,7 +308,7 @@ function EventRow({ event }: { event: MatchEvent }) {
       <div className="w-10 text-center text-xs text-white/40 tabular-nums font-mono flex-shrink-0">
         {event.minute}{event.stoppage ? `+${event.stoppage}` : ""}&apos;
       </div>
-      <div className="text-lg w-6 text-center flex-shrink-0">{icon}</div>
+      <div className="text-lg w-6 text-center flex-shrink-0" aria-hidden="true">{icon}</div>
       <div className="flex-1 min-w-0">
         {event.type === "goal" || event.type === "penalty_scored" ? (
           <>

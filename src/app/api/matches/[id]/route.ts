@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchAllFixtures, fetchMatchDetails } from "@/lib/espn";
 
-export const revalidate = 15;
+export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: Request,
@@ -23,7 +23,11 @@ export async function GET(
       return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
     const detailed = await fetchMatchDetails(found);
-    return NextResponse.json({ match: detailed });
+    const cacheSeconds = detailed.status === "FINISHED" ? 3600 : 30;
+    return NextResponse.json(
+      { match: detailed },
+      { headers: { "Cache-Control": `s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 2}` } }
+    );
   } catch (err) {
     console.error("match detail failed", err);
     return NextResponse.json(

@@ -204,7 +204,10 @@ export function summaryToMatch(
       name: String(competition?.notes?.find?.((n: any) => n?.type === "event")?.headline ?? fallback.name),
       emblem: competition?.competitionRecord?.[0]?.abbreviation,
     },
-    kickoff: competition.date ?? competition.startDate ?? new Date().toISOString(),
+    kickoff: competition.date ?? competition.startDate ?? (() => {
+      console.warn(`summaryToMatch: competition ${competition.id ?? "unknown"} has no date field`);
+      return new Date(0).toISOString();
+    })(),
     status,
     minute,
     home: mapTeam(home.team, "home"),
@@ -538,11 +541,9 @@ function computeMinutesPlayed(
   subOn: number | null,
   subOff: number | null
 ): number {
-  // Heuristic: We don't have exact substitution timestamps in many cases,
-  // so assume a 90-min match and that the player played the full stretch.
-  if (starter && !subOff) return 90;
-  if (!starter && subOn) return 90 - subOn;
-  if (starter && subOff) return subOff;
+  if (starter && subOff == null) return 90;
+  if (!starter && subOn != null) return Math.max(0, 90 - subOn);
+  if (starter && subOff != null) return subOff;
   return 0;
 }
 

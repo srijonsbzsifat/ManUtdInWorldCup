@@ -276,9 +276,8 @@ function LineupRow({
 
 function EventsTimeline({ match }: { match: Match }) {
   const events = [...match.events].sort((a, b) => {
-    const aT = a.minute + (a.stoppage ?? 0) / 100;
-    const bT = b.minute + (b.stoppage ?? 0) / 100;
-    return aT - bT;
+    if (a.minute !== b.minute) return a.minute - b.minute;
+    return (a.stoppage ?? 0) - (b.stoppage ?? 0);
   });
   return (
     <section>

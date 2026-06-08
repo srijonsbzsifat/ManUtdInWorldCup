@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { fetchAllFixtures, fetchMatchDetails } from "@/lib/espn";
 import { NATIONAL_TEAMS } from "@/lib/players";
 import { computeTournamentStats, topPerformers } from "@/lib/aggregator";
+import type { Match } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
@@ -19,7 +20,12 @@ export async function GET() {
     const relevant = fixtures.filter(
       (m) => nationCodes.has(m.home.code) || nationCodes.has(m.away.code)
     );
-    const detailed = await Promise.all(relevant.map((m) => fetchMatchDetails(m)));
+    const results = await Promise.allSettled(relevant.map((m) => fetchMatchDetails(m)));
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed > 0) console.warn(`stats: ${failed}/${results.length} match detail fetches failed`);
+    const detailed = results
+      .filter((r): r is PromiseFulfilledResult<Match> => r.status === "fulfilled")
+      .map((r) => r.value);
     const stats = computeTournamentStats(detailed);
 
     return NextResponse.json({

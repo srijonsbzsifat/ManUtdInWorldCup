@@ -7,9 +7,26 @@ const FOTMOB_BASE = "https://www.fotmob.com";
 /* Cache                                                                      */
 /* -------------------------------------------------------------------------- */
 
-const matchIdCache = new Map<string, number | null>();
-const ratingsCache = new Map<number, Record<string, number> | null>();
-const motmCache = new Map<number, { name: string; teamName: string } | null>();
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+interface Stamped<T> { v: T; exp: number }
+
+const matchIdCache = new Map<string, Stamped<number | null>>();
+const ratingsCache = new Map<number, Stamped<Record<string, number> | null>>();
+const motmCache = new Map<number, Stamped<{ name: string; teamName: string } | null>>();
+
+function cacheHas<K, V>(map: Map<K, Stamped<V>>, key: K): boolean {
+  const e = map.get(key);
+  if (!e) return false;
+  if (Date.now() > e.exp) { map.delete(key); return false; }
+  return true;
+}
+function cacheGet<K, V>(map: Map<K, Stamped<V>>, key: K): V | undefined {
+  return map.get(key)?.v;
+}
+function cacheSet<K, V>(map: Map<K, Stamped<V>>, key: K, value: V): void {
+  map.set(key, { v: value, exp: Date.now() + CACHE_TTL_MS });
+}
 
 function matchCacheKey(date: string, home: string, away: string): string {
   return `${date}|${normaliseName(home)}|${normaliseName(away)}`;
@@ -31,7 +48,7 @@ export async function fetchFotmobMatchId(
 ): Promise<number | null> {
   const date = dateISOToYYYYMMDD(dateISO);
   const key = matchCacheKey(date, homeTeamName, awayTeamName);
-  if (matchIdCache.has(key)) return matchIdCache.get(key) ?? null;
+  if (cacheHas(matchIdCache, key)) return cacheGet(matchIdCache, key) ?? null;
 
   try {
     const url = `${FOTMOB_BASE}/api/data/matches?date=${date}`;
@@ -59,13 +76,13 @@ export async function fetchFotmobMatchId(
         if (fotmobHome === homeNorm && fotmobAway === awayNorm) {
           const id = parseInt(m.id, 10);
           if (!isNaN(id)) {
-            matchIdCache.set(key, id);
+            cacheSet(matchIdCache, key, id);
             return id;
           }
         }
       }
     }
-    matchIdCache.set(key, null);
+    cacheSet(matchIdCache, key, null);
     return null;
   } catch {
     return null;
@@ -137,26 +154,26 @@ function collectAllLineupPlayers(lineup: any): any[] {
 export async function fetchFotmobLineupRatings(
   fotmobMatchId: number
 ): Promise<Record<string, number> | null> {
-  if (ratingsCache.has(fotmobMatchId)) {
-    return ratingsCache.get(fotmobMatchId) ?? null;
+  if (cacheHas(ratingsCache, fotmobMatchId)) {
+    return cacheGet(ratingsCache, fotmobMatchId) ?? null;
   }
 
   try {
     const html = await fetchFotmobPageHtml(fotmobMatchId);
     if (!html) {
-      ratingsCache.set(fotmobMatchId, null);
+      cacheSet(ratingsCache, fotmobMatchId, null);
       return null;
     }
 
     const content = extractFotmobContent(html);
     if (!content) {
-      ratingsCache.set(fotmobMatchId, null);
+      cacheSet(ratingsCache, fotmobMatchId, null);
       return null;
     }
 
     const lineup = content?.lineup;
     if (!lineup) {
-      ratingsCache.set(fotmobMatchId, null);
+      cacheSet(ratingsCache, fotmobMatchId, null);
       return null;
     }
 
@@ -177,10 +194,10 @@ export async function fetchFotmobLineupRatings(
     collect(lineup?.awayTeam?.starters);
     collect(lineup?.awayTeam?.subs);
 
-    ratingsCache.set(fotmobMatchId, result);
+    cacheSet(ratingsCache, fotmobMatchId, result);
     return result;
   } catch {
-    ratingsCache.set(fotmobMatchId, null);
+    cacheSet(ratingsCache, fotmobMatchId, null);
     return null;
   }
 }
@@ -196,26 +213,26 @@ export async function fetchFotmobLineupRatings(
 export async function fetchFotmobMotm(
   fotmobMatchId: number
 ): Promise<{ name: string; teamName: string } | null> {
-  if (motmCache.has(fotmobMatchId)) {
-    return motmCache.get(fotmobMatchId) ?? null;
+  if (cacheHas(motmCache, fotmobMatchId)) {
+    return cacheGet(motmCache, fotmobMatchId) ?? null;
   }
 
   try {
     const html = await fetchFotmobPageHtml(fotmobMatchId);
     if (!html) {
-      motmCache.set(fotmobMatchId, null);
+      cacheSet(motmCache, fotmobMatchId, null);
       return null;
     }
 
     const content = extractFotmobContent(html);
     if (!content) {
-      motmCache.set(fotmobMatchId, null);
+      cacheSet(motmCache, fotmobMatchId, null);
       return null;
     }
 
     const potm = content?.matchFacts?.playerOfTheMatch;
     if (!potm) {
-      motmCache.set(fotmobMatchId, null);
+      cacheSet(motmCache, fotmobMatchId, null);
       return null;
     }
 
@@ -234,15 +251,15 @@ export async function fetchFotmobMotm(
     }
 
     if (!rawName) {
-      motmCache.set(fotmobMatchId, null);
+      cacheSet(motmCache, fotmobMatchId, null);
       return null;
     }
 
     const result = { name: rawName, teamName: potm.teamName ?? "" };
-    motmCache.set(fotmobMatchId, result);
+    cacheSet(motmCache, fotmobMatchId, result);
     return result;
   } catch {
-    motmCache.set(fotmobMatchId, null);
+    cacheSet(motmCache, fotmobMatchId, null);
     return null;
   }
 }

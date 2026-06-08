@@ -355,7 +355,7 @@ function mapEvents(
       continue;
     }
 
-    if (type.includes("substitution") || type.includes("substitution")) {
+    if (type.includes("substitution")) {
       const inP = play?.participants?.find((p: any) => p?.type === "IN" || p?.position === "in");
       const outP = play?.participants?.find((p: any) => p?.type === "OUT" || p?.position === "out");
       events.push({

@@ -50,7 +50,7 @@ Requires Node 18.17+ (Node 20+ recommended).
 2. **FotMob** is scraped for finished matches to get real player ratings (1–10) and Man of the Match — replaces ESPN's absence of rating data.
 3. **Fallback chain**: FotMob rating → ESPN stat-based computed rating → `null`.
 
-Player ratings are cached in memory and refreshed per request. Live matches skip FotMob scraping to avoid errors on incomplete data.
+Player ratings are cached in memory with a 2-hour TTL (so a stale or failed FotMob lookup is retried automatically after expiry). Live matches skip FotMob scraping to avoid errors on incomplete data.
 
 ---
 
@@ -75,8 +75,11 @@ src/
 │   ├── matches/               # Match list + detail pages
 │   ├── news/                  # News page
 │   ├── players/               # Player list + detail pages
+│   ├── error.tsx              # Global error boundary
 │   └── page.tsx               # Dashboard
-├── components/                # Reusable UI components
+├── components/
+│   ├── SWRProvider.tsx        # Global SWR config (shared fetcher)
+│   └── ...                    # Reusable UI components
 ├── lib/
 │   ├── aggregator.ts          # Match[] → per-player stats
 │   ├── espn.ts                # ESPN API adapter

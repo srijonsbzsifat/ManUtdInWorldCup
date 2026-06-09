@@ -39,7 +39,7 @@ export default function PlayerPage({ params }: { params: { id: string } }) {
       <div className="glass p-8 text-center">
         <p className="text-base font-semibold mb-1">Player not found</p>
         <p className="text-sm text-white/50 mb-4">
-          The player "{id}" is not in the Manchester United squad
+          The player &quot;{id}&quot; is not in the Manchester United squad
           tracker, or the data feed is temporarily unavailable.
         </p>
         <Link href="/players" className="text-united-red hover:underline text-sm">

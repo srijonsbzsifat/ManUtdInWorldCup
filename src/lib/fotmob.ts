@@ -45,7 +45,8 @@ function matchCacheKey(date: string, home: string, away: string): string {
 export async function fetchFotmobMatchId(
   dateISO: string,
   homeTeamName: string,
-  awayTeamName: string
+  awayTeamName
+    : string
 ): Promise<number | null> {
   const date = dateISOToYYYYMMDD(dateISO);
   const key = matchCacheKey(date, homeTeamName, awayTeamName);
@@ -105,6 +106,7 @@ interface FotmobLineupPlayer {
 export interface FotmobMatchData {
   ratings: Record<string, number> | null;
   motm: { name: string; teamName: string } | null;
+  formation: { home: string | null; away: string | null } | null;
 }
 
 /**
@@ -195,6 +197,23 @@ function extractMotm(content: any): { name: string; teamName: string } | null {
   return { name: rawName, teamName: potm.teamName ?? "" };
 }
 
+function extractFormation(content: any): { home: string | null; away: string | null } | null {
+  const lineup = content?.lineup;
+  if (!lineup) return null;
+
+  const homeFormation = lineup.homeTeam?.formation;
+  const awayFormation = lineup.awayTeam?.formation;
+
+  if (homeFormation || awayFormation) {
+    return {
+      home: typeof homeFormation === 'string' ? homeFormation : null,
+      away: typeof awayFormation === 'string' ? awayFormation : null,
+    };
+  }
+  return null;
+}
+
+
 export async function fetchFotmobMatchData(
   fotmobMatchId: number
 ): Promise<FotmobMatchData | null> {
@@ -222,6 +241,7 @@ export async function fetchFotmobMatchData(
     const result = {
       ratings: extractRatings(content),
       motm: extractMotm(content),
+      formation: extractFormation(content),
     };
     cacheSet(matchDataCache, fotmobMatchId, result);
     cacheSet(ratingsCache, fotmobMatchId, result.ratings);

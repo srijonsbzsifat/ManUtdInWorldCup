@@ -120,24 +120,24 @@ export interface MatchEvent {
   minute: number;
   stoppage?: number;
   type:
-    | "goal"
-    | "yellow_card"
-    | "red_card"
-    | "substitution"
-    | "var"
-    | "penalty_missed"
-    | "penalty_scored"
-    | "penalty_saved"
-    | "own_goal"
-    | "kickoff"
-    | "half_time"
-    | "full_time"
-    | "shot_on_target"
-    | "shot_off_target"
-    | "shot_saved"
-    | "shot_blocked"
-    | "shot_post"
-    | "var_decision";
+  | "goal"
+  | "yellow_card"
+  | "red_card"
+  | "substitution"
+  | "var"
+  | "penalty_missed"
+  | "penalty_scored"
+  | "penalty_saved"
+  | "own_goal"
+  | "kickoff"
+  | "half_time"
+  | "full_time"
+  | "shot_on_target"
+  | "shot_off_target"
+  | "shot_saved"
+  | "shot_blocked"
+  | "shot_post"
+  | "var_decision";
   team: "home" | "away";
   player?: { id?: string; name: string };
   assistPlayer?: { id?: string; name: string };
@@ -178,6 +178,8 @@ export interface Match {
   motm?: { name: string; team: "home" | "away" };
   /** Friendly tournament / stage name. */
   stage?: string;
+  /** Team formations if available (e.g., "4-3-3"). */
+  formation?: { home: string | null; away: string | null };
 }
 
 export interface PlayerTournamentStats {

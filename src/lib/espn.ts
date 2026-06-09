@@ -911,8 +911,13 @@ export async function fetchMatchDetails(match: Match): Promise<Match> {
     });
     if (detailed) {
       const enriched = { ...match, ...detailed, id: match.id };
-      // Try to fetch real FotMob ratings for finished matches.
-      if (enriched.status === "FINISHED" && enriched.lineups) {
+      // Try to fetch real FotMob ratings / formations for lineups.
+      if (
+        (enriched.status === "FINISHED" ||
+          enriched.status === "IN_PLAY" ||
+          enriched.status === "PAUSED") &&
+        enriched.lineups
+      ) {
         try {
           const fotmobId = await fetchFotmobMatchId(
             enriched.kickoff,
@@ -921,11 +926,16 @@ export async function fetchMatchDetails(match: Match): Promise<Match> {
           );
           if (fotmobId) {
             const fotmobData = await fetchFotmobMatchData(fotmobId);
-            if (fotmobData?.ratings) {
-              enriched.lineups = {
-                home: applyFotmobRatings(enriched.lineups.home, fotmobData.ratings),
-                away: applyFotmobRatings(enriched.lineups.away, fotmobData.ratings),
-              };
+            if (fotmobData) {
+              if (fotmobData.ratings) {
+                enriched.lineups = {
+                  home: applyFotmobRatings(enriched.lineups.home, fotmobData.ratings),
+                  away: applyFotmobRatings(enriched.lineups.away, fotmobData.ratings),
+                };
+              }
+              if (fotmobData.formation) {
+                enriched.formation = fotmobData.formation;
+              }
             }
 
             // Override MOTM with FotMob data if available

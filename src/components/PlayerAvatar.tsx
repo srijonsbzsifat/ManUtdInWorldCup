@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Image from "next/image";
 import type { UnitedPlayer } from "@/types";
 import { cn } from "@/lib/utils";
 import { NationFlag } from "./NationFlag";
@@ -39,8 +40,8 @@ export function PlayerAvatar({
         style={{ fontSize: size * 0.36 }}
       >
         {showImage ? (
-          <img
-            src={player.imageUrl}
+          <Image
+            src={player.imageUrl!}
             alt={player.name}
             width={size}
             height={size}

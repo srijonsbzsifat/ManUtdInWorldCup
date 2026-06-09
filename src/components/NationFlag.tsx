@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { flagFallbackLabel, figmaFlagSlug } from "@/lib/flags";
 
@@ -67,7 +68,7 @@ export function NationFlag({
   }
 
   return (
-    <img
+    <Image
       src={url}
       alt={title ?? `${code} flag`}
       width={size}

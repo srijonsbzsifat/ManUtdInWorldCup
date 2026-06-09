@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export function LoadingSpinner({
   text = "Loading...",
 }: {
@@ -9,7 +11,7 @@ export function LoadingSpinner({
         <div className="absolute inset-0 rounded-full border-2 border-white/10" />
         <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-united-red animate-spin" />
         <div className="absolute inset-0 flex items-center justify-center">
-          <img src="/manutd-crest.png" alt="" className="w-10 h-10 object-contain" />
+          <Image src="/manutd-crest.png" alt="" width={40} height={40} />
         </div>
       </div>
       <p className="text-sm text-white/50 animate-pulse">{text}</p>

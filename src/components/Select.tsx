@@ -57,6 +57,7 @@ export function Select({
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? "select-options" : undefined}
         onClick={() => (open ? setOpen(false) : openMenu())}
         className="flex items-center gap-2 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-united-red whitespace-nowrap"
       >
@@ -75,8 +76,9 @@ export function Select({
       {open && typeof document !== "undefined" && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            style={{
+            <div
+              id="select-options"
+              style={{
               position: "fixed",
               top: `${menuPos.top + 4}px`,
               left: `${menuPos.left}px`,

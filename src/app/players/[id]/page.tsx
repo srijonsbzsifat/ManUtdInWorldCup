@@ -275,8 +275,15 @@ function Tag({ icon, label, highlight }: { icon: string; label: string; highligh
 }
 
 function RecentStats({ performances }: { performances: PlayerMatchPerformance[] }) {
-  if (performances.length === 0) return null;
   const { last5, avg, goals, assists } = useMemo(() => {
+    if (performances.length === 0) {
+      return {
+        last5: [],
+        avg: "—",
+        goals: 0,
+        assists: 0,
+      };
+    }
     const l5 = performances.slice(0, 5).reverse();
     const ratings = l5.map((p) => p.player.rating).filter((r): r is number => r !== null && r !== undefined);
     return {
@@ -286,6 +293,11 @@ function RecentStats({ performances }: { performances: PlayerMatchPerformance[] 
       assists: l5.reduce((s, p) => s + (p.player.assists ?? 0), 0),
     };
   }, [performances]);
+
+  if (performances.length === 0) {
+    return null;
+  }
+
   return (
     <section>
       <h2 className="text-lg font-semibold mb-3">Form (last 5)</h2>

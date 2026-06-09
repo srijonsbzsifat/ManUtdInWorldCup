@@ -10,6 +10,7 @@ const nextConfig = {
       { protocol: "https", hostname: "resources.premierleague.com" },
       { protocol: "https", hostname: "img.uefa.com" },
       { protocol: "https", hostname: "upload.wikimedia.org" },
+      { protocol: "https", hostname: "flagcdn.com" },
     ],
   },
 };

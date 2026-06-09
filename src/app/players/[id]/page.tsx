@@ -49,7 +49,7 @@ export default function PlayerPage({ params }: { params: { id: string } }) {
     );
   }
 
-  const { player, stats, performances, nextFixtures } = data;
+  const { player, stats, performances } = data;
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -57,11 +57,11 @@ export default function PlayerPage({ params }: { params: { id: string } }) {
       <StatsGrid stats={stats} player={player} />
       <PerformanceLog performances={performances} />
       <RecentStats performances={performances} />
-      {nextFixtures && nextFixtures.length > 0 && (
+      {data.nextFixtures && data.nextFixtures.length > 0 && (
         <UpcomingFixturesSection
-          matches={nextFixtures}
+          matches={data.nextFixtures}
           title="Next Fixtures"
-          subtitle={`Next ${nextFixtures.length} games for ${player.nation.name}`}
+          subtitle={`Next ${data.nextFixtures.length} games for ${player.nation.name}`}
         />
       )}
     </div>

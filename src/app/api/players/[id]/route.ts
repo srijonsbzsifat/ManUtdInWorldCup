@@ -25,6 +25,7 @@ export async function GET(
     end.setDate(end.getDate() + 30);
 
     const fixtures = await getCachedFixtures({ start, end });
+
     // Hydrate details (lineups, events) for every match involving this player's
     // national team - the summary endpoint is heavier so we limit it to the
     // matches we care about.
@@ -47,10 +48,16 @@ export async function GET(
     const performances = computePlayerPerformances(detailed, player.id);
     const tournamentStats = computeTournamentStats(detailed)[player.id];
 
-    // Fetch upcoming fixtures for the player's nation
-    const allFixtures = await getCachedFixtures({ start: new Date(), end: new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000) });
-    const nextFixtures = allFixtures
-      .filter((m) => (m.status === "SCHEDULED" || m.status === "TIMED") && (m.home.code === player.nation.code || m.away.code === player.nation.code))
+    // Filter next 3 upcoming fixtures in-memory from the already fetched cache results
+    // avoiding a second external network-bound cache query.
+    const now = new Date();
+    const nextFixtures = fixtures
+      .filter(
+        (m) =>
+          (m.status === "SCHEDULED" || m.status === "TIMED") &&
+          new Date(m.kickoff) >= now &&
+          (m.home.code === player.nation.code || m.away.code === player.nation.code)
+      )
       .slice(0, 3);
 
     return NextResponse.json({

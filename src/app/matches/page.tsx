@@ -1,5 +1,6 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { MatchCard } from "@/components/MatchCard";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
@@ -9,10 +10,33 @@ import { NATIONAL_TEAMS } from "@/lib/players";
 import { cn } from "@/lib/utils";
 
 type Tab = "all" | "live" | "upcoming" | "finished";
+const TABS: Tab[] = ["all", "live", "upcoming", "finished"];
 
 export default function MatchesPage() {
-  const [tab, setTab] = useState<Tab>("all");
-  const [nation, setNation] = useState<string>("All");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const rawTab = searchParams.get("tab");
+  const tab: Tab = TABS.includes(rawTab as Tab) ? (rawTab as Tab) : "all";
+  const rawNation = searchParams.get("nation");
+  const nation = rawNation && NATIONAL_TEAMS.some((n) => n.id === rawNation)
+    ? rawNation
+    : "All";
+
+  function updateFilter(next: { tab?: Tab; nation?: string }) {
+    const params = new URLSearchParams(searchParams.toString());
+    const nextTab = next.tab ?? tab;
+    const nextNation = next.nation ?? nation;
+
+    if (nextTab === "all") params.delete("tab");
+    else params.set("tab", nextTab);
+
+    if (nextNation === "All") params.delete("nation");
+    else params.set("nation", nextNation);
+
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
 
   const { data, isLoading } = useSWR<{ matches: Match[]; count: number }>(
     tab === "all" ? "/api/matches" : `/api/matches?status=${tab}`,
@@ -42,10 +66,10 @@ export default function MatchesPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 bg-white/5 rounded-lg p-1">
-            {(["all", "live", "upcoming", "finished"] as Tab[]).map((t) => (
+            {TABS.map((t) => (
               <button
                 key={t}
-                onClick={() => setTab(t)}
+                onClick={() => updateFilter({ tab: t })}
                 className={cn(
                   "px-3 py-1.5 rounded-md text-xs font-semibold capitalize transition-colors",
                   tab === t
@@ -60,7 +84,7 @@ export default function MatchesPage() {
           </div>
           <Select
             value={nation}
-            onChange={setNation}
+            onChange={(nextNation) => updateFilter({ nation: nextNation })}
             options={NATIONAL_TEAMS.map((n) => ({ value: n.id, label: n.name }))}
             allLabel="All nations"
           />
@@ -119,8 +143,8 @@ function groupByDate(matches: Match[]) {
 
 function isSameDay(a: Date, b: Date) {
   return (
-    a.getUTCFullYear() === b.getUTCFullYear() &&
-    a.getUTCMonth() === b.getUTCMonth() &&
-    a.getUTCDate() === b.getUTCDate()
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
   );
 }

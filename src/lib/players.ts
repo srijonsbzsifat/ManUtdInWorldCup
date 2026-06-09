@@ -222,14 +222,35 @@ export function matchUnitedPlayer(name: string): UnitedPlayer | undefined {
   if (NAME_ALIASES[key]) {
     return PLAYERS_BY_ID[NAME_ALIASES[key]];
   }
-  // Fall back to a last-name match.  We only use last-name matches when the
-  // name from the feed has at least two tokens (first + last) - this prevents
-  // a generic shortName like "Bruno" from matching every other "Bruno X".
   const parts = key.split(" ");
+  const tokenMatches: Array<{ player: UnitedPlayer; score: number }> = [];
+
   for (const player of UNITED_PLAYERS) {
-    if (key.includes(normaliseName(player.name))) return player;
-    if (parts.length >= 2 && key.includes(normaliseName(player.shortName))) return player;
+    const playerFullName = normaliseName(player.name);
+    const playerShortName = normaliseName(player.shortName);
+    const playerTokens = new Set(playerFullName.split(" ").filter(Boolean));
+
+    // 1. Exact full name match
+    if (key === playerFullName) return player;
+
+    // 2. Exact short name match (or feed name is exactly the player's short name)
+    if (key === playerShortName) return player;
+
+    // 3. Feed name includes full name
+    if (key.includes(playerFullName)) return player;
+
+    // 4. Fall back to last-name/short-name match when the feed name is detailed (has first + last)
+    if (parts.length >= 2 && key.includes(playerShortName)) return player;
+
+    const overlap = parts.filter((part) => playerTokens.has(part)).length;
+    if (overlap >= 2) {
+      tokenMatches.push({ player, score: overlap });
+    }
   }
+
+  tokenMatches.sort((a, b) => b.score - a.score);
+  if (tokenMatches.length > 0) return tokenMatches[0].player;
+
   return undefined;
 }
 

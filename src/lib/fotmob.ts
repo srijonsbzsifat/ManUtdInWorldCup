@@ -14,6 +14,7 @@ interface Stamped<T> { v: T; exp: number }
 const matchIdCache = new Map<string, Stamped<number | null>>();
 const ratingsCache = new Map<number, Stamped<Record<string, number> | null>>();
 const motmCache = new Map<number, Stamped<{ name: string; teamName: string } | null>>();
+const matchDataCache = new Map<number, Stamped<FotmobMatchData | null>>();
 
 function cacheHas<K, V>(map: Map<K, Stamped<V>>, key: K): boolean {
   const e = map.get(key);
@@ -101,6 +102,11 @@ interface FotmobLineupPlayer {
   };
 }
 
+export interface FotmobMatchData {
+  ratings: Record<string, number> | null;
+  motm: { name: string; teamName: string } | null;
+}
+
 /**
  * Shared helpers for fetching FotMob match page and extracting __NEXT_DATA__.
  */
@@ -144,6 +150,91 @@ function collectAllLineupPlayers(lineup: any): any[] {
   return all;
 }
 
+function extractRatings(content: any): Record<string, number> | null {
+  const lineup = content?.lineup;
+  if (!lineup) return null;
+
+  const result: Record<string, number> = {};
+
+  function collect(players: FotmobLineupPlayer[]) {
+    if (!Array.isArray(players)) return;
+    for (const p of players) {
+      const rating = p?.performance?.rating;
+      if (rating !== undefined && rating !== null && p?.name) {
+        result[normaliseName(p.name)] = rating;
+      }
+    }
+  }
+
+  collect(lineup?.homeTeam?.starters);
+  collect(lineup?.homeTeam?.subs);
+  collect(lineup?.awayTeam?.starters);
+  collect(lineup?.awayTeam?.subs);
+
+  return result;
+}
+
+function extractMotm(content: any): { name: string; teamName: string } | null {
+  const potm = content?.matchFacts?.playerOfTheMatch;
+  if (!potm) return null;
+
+  let rawName = potm.name;
+  // FotMob sometimes returns name as { firstName, lastName, fullName }
+  if (typeof rawName === "object" && rawName !== null) {
+    rawName = rawName.fullName ?? `${rawName.firstName ?? ""} ${rawName.lastName ?? ""}`.trim();
+  }
+  if (typeof rawName !== "string" || !rawName) {
+    const allPlayers = collectAllLineupPlayers(content?.lineup);
+    const matched = allPlayers.find(
+      (p: any) => String(p.id) === String(potm.id)
+    );
+    rawName = matched?.fullName ?? matched?.name ?? "";
+  }
+
+  if (!rawName) return null;
+  return { name: rawName, teamName: potm.teamName ?? "" };
+}
+
+export async function fetchFotmobMatchData(
+  fotmobMatchId: number
+): Promise<FotmobMatchData | null> {
+  if (cacheHas(matchDataCache, fotmobMatchId)) {
+    return cacheGet(matchDataCache, fotmobMatchId) ?? null;
+  }
+
+  try {
+    const html = await fetchFotmobPageHtml(fotmobMatchId);
+    if (!html) {
+      cacheSet(matchDataCache, fotmobMatchId, null);
+      cacheSet(ratingsCache, fotmobMatchId, null);
+      cacheSet(motmCache, fotmobMatchId, null);
+      return null;
+    }
+
+    const content = extractFotmobContent(html);
+    if (!content) {
+      cacheSet(matchDataCache, fotmobMatchId, null);
+      cacheSet(ratingsCache, fotmobMatchId, null);
+      cacheSet(motmCache, fotmobMatchId, null);
+      return null;
+    }
+
+    const result = {
+      ratings: extractRatings(content),
+      motm: extractMotm(content),
+    };
+    cacheSet(matchDataCache, fotmobMatchId, result);
+    cacheSet(ratingsCache, fotmobMatchId, result.ratings);
+    cacheSet(motmCache, fotmobMatchId, result.motm);
+    return result;
+  } catch {
+    cacheSet(matchDataCache, fotmobMatchId, null);
+    cacheSet(ratingsCache, fotmobMatchId, null);
+    cacheSet(motmCache, fotmobMatchId, null);
+    return null;
+  }
+}
+
 /**
  * Fetch FotMob match page HTML, extract __NEXT_DATA__, and return a map of
  * player name → rating for all players who appeared in the match.
@@ -158,48 +249,8 @@ export async function fetchFotmobLineupRatings(
     return cacheGet(ratingsCache, fotmobMatchId) ?? null;
   }
 
-  try {
-    const html = await fetchFotmobPageHtml(fotmobMatchId);
-    if (!html) {
-      cacheSet(ratingsCache, fotmobMatchId, null);
-      return null;
-    }
-
-    const content = extractFotmobContent(html);
-    if (!content) {
-      cacheSet(ratingsCache, fotmobMatchId, null);
-      return null;
-    }
-
-    const lineup = content?.lineup;
-    if (!lineup) {
-      cacheSet(ratingsCache, fotmobMatchId, null);
-      return null;
-    }
-
-    const result: Record<string, number> = {};
-
-    function collect(players: FotmobLineupPlayer[]) {
-      if (!Array.isArray(players)) return;
-      for (const p of players) {
-        const rating = p?.performance?.rating;
-        if (rating !== undefined && rating !== null && p?.name) {
-          result[normaliseName(p.name)] = rating;
-        }
-      }
-    }
-
-    collect(lineup?.homeTeam?.starters);
-    collect(lineup?.homeTeam?.subs);
-    collect(lineup?.awayTeam?.starters);
-    collect(lineup?.awayTeam?.subs);
-
-    cacheSet(ratingsCache, fotmobMatchId, result);
-    return result;
-  } catch {
-    cacheSet(ratingsCache, fotmobMatchId, null);
-    return null;
-  }
+  const data = await fetchFotmobMatchData(fotmobMatchId);
+  return data?.ratings ?? null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -217,51 +268,8 @@ export async function fetchFotmobMotm(
     return cacheGet(motmCache, fotmobMatchId) ?? null;
   }
 
-  try {
-    const html = await fetchFotmobPageHtml(fotmobMatchId);
-    if (!html) {
-      cacheSet(motmCache, fotmobMatchId, null);
-      return null;
-    }
-
-    const content = extractFotmobContent(html);
-    if (!content) {
-      cacheSet(motmCache, fotmobMatchId, null);
-      return null;
-    }
-
-    const potm = content?.matchFacts?.playerOfTheMatch;
-    if (!potm) {
-      cacheSet(motmCache, fotmobMatchId, null);
-      return null;
-    }
-
-    let rawName = potm.name;
-    // FotMob sometimes returns name as { firstName, lastName, fullName }
-    if (typeof rawName === "object" && rawName !== null) {
-      rawName = rawName.fullName ?? `${rawName.firstName ?? ""} ${rawName.lastName ?? ""}`.trim();
-    }
-    if (typeof rawName !== "string" || !rawName) {
-      // Fall back to looking up player name from lineup by player id
-      const allPlayers = collectAllLineupPlayers(content?.lineup);
-      const matched = allPlayers.find(
-        (p: any) => String(p.id) === String(potm.id)
-      );
-      rawName = matched?.fullName ?? matched?.name ?? "";
-    }
-
-    if (!rawName) {
-      cacheSet(motmCache, fotmobMatchId, null);
-      return null;
-    }
-
-    const result = { name: rawName, teamName: potm.teamName ?? "" };
-    cacheSet(motmCache, fotmobMatchId, result);
-    return result;
-  } catch {
-    cacheSet(motmCache, fotmobMatchId, null);
-    return null;
-  }
+  const data = await fetchFotmobMatchData(fotmobMatchId);
+  return data?.motm ?? null;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -62,7 +62,7 @@ export async function fetchNewsForAllPlayers(): Promise<NewsItem[]> {
   const seen = new Set<string>();
 
   const results = await Promise.allSettled(
-    UNITED_PLAYERS.slice(0, 12).map(async (p) => {
+    UNITED_PLAYERS.map(async (p) => {
       const q = `"${p.name}" ${p.nation.name}`;
       const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
       const controller = new AbortController();

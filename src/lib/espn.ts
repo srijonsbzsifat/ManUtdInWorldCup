@@ -10,7 +10,7 @@ import type {
   PlayerPosition,
 } from "@/types";
 import { matchUnitedPlayer, normaliseName } from "@/lib/players";
-import { fetchFotmobMatchId, fetchFotmobLineupRatings, fetchFotmobMotm, applyFotmobRatings } from "@/lib/fotmob";
+import { fetchFotmobMatchData, fetchFotmobMatchId, applyFotmobRatings } from "@/lib/fotmob";
 
 /* -------------------------------------------------------------------------- */
 /* ESPN public API adapter                                                    */
@@ -253,9 +253,18 @@ function mapEvents(
   const plays = summary?.plays ?? [];
   const details = summary?.header?.competitions?.[0]?.details ?? [];
   const allEvents = [...plays, ...details];
+
+  const getSortKey = (p: any) => {
+    const min = parseClockMinute(p?.clock) ?? 0;
+    const stop = parseStoppage(p?.clock) ?? 0;
+    return min * 1000 + stop;
+  };
+
+  const sortedEvents = [...allEvents].sort((a, b) => getSortKey(a) - getSortKey(b));
+  const seenKeys = new Set<string>();
   let runningScore = { home: 0, away: 0 };
 
-  for (const play of allEvents) {
+  for (const play of sortedEvents) {
     // Handle both formats: plays (type.text/type.abbreviation) and details (scoringPlay/redCard flags)
     const isDetailFormat = play?.scoringPlay !== undefined || play?.redCard !== undefined;
     let type = "";
@@ -264,23 +273,27 @@ function mapEvents(
       else if (play.scoringPlay) type = "goal";
       else if (play.redCard) type = "red_card";
       else if (play.penaltyKick) {
-        // Check if it's a penalty save (goalkeeper saved a penalty)
-        // This would need to be determined from commentary or additional data
         type = "penalty";
       }
     } else {
       type = String(play?.type?.text ?? play?.type?.abbreviation ?? "").toLowerCase();
     }
-    
+
     const teamId = play?.team?.id;
     const team: "home" | "away" = String(teamId) === String(homeTeamId) ? "home" : "away";
     const minute = parseClockMinute(play?.clock);
     const stoppage = parseStoppage(play?.clock);
+    const minVal = minute ?? 0;
+    const stopVal = stoppage ?? 0;
 
     if (type.includes("kickoff") && !play?.scoringPlay) {
+      const eventKey = `kickoff-${minVal}-${stopVal}-${team}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-ko`),
-        minute: minute ?? 0,
+        minute: minVal,
         type: "kickoff",
         team,
         detail: team === "home" ? "Kick off" : "Kick off",
@@ -293,12 +306,18 @@ function mapEvents(
       const participants = play?.participants ?? [];
       const scorer = isDetailFormat ? participants[0] : participants.find((p: any) => p?.type === "SCORER" || p?.position === "scorer");
       const assist = isDetailFormat ? participants[1] : participants.find((p: any) => p?.type === "ASSIST" || p?.position === "assist");
-      
+
+      const scorerName = scorer ? safeName(scorer) : "";
+      const eventKey = `goal-${minVal}-${stopVal}-${team}-${scorerName}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       if (team === "home") runningScore.home += 1;
       else runningScore.away += 1;
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-goal`),
-        minute: minute ?? 0,
+        minute: minVal,
         stoppage,
         type: isDetailFormat && play.ownGoal ? "own_goal" : "goal",
         team,
@@ -318,11 +337,18 @@ function mapEvents(
       // In detail format, first participant is scorer
       const participants = play?.participants ?? [];
       const scorer = isDetailFormat ? participants[0] : participants.find((p: any) => p?.type === "SCORER" || p?.position === "scorer");
+
+      const scorerName = scorer ? safeName(scorer) : "";
+      const eventKey = `penalty_scored-${minVal}-${stopVal}-${team}-${scorerName}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       if (team === "home") runningScore.home += 1;
       else runningScore.away += 1;
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-pen`),
-        minute: minute ?? 0,
+        minute: minVal,
         stoppage,
         type: "penalty_scored",
         team,
@@ -336,17 +362,21 @@ function mapEvents(
     }
 
     // Check for penalty saved (goalkeeper saved a penalty)
-    // This would need to be detected from commentary or specific event types
     if ((type.includes("penalty") && !play?.scoringPlay) || (isDetailFormat && play.penaltyKick && !play.scoringPlay)) {
-      // Placeholder - would need additional data to confirm this is a save vs miss
+      const pPlayer = play?.participants?.[0];
+      const pPlayerName = pPlayer ? safeName(pPlayer) : "";
+      const eventKey = `penalty_saved-${minVal}-${stopVal}-${team}-${pPlayerName}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-pensave`),
-        minute: minute ?? 0,
+        minute: minVal,
         stoppage,
-        type: "penalty_saved", // We'll determine if it's actually a save or miss later
+        type: "penalty_saved",
         team,
-        player: play?.participants?.[0]
-          ? { id: String(play.participants[0].athlete?.id ?? ""), name: safeName(play.participants[0]) }
+        player: pPlayer
+          ? { id: String(pPlayer.athlete?.id ?? ""), name: safeName(pPlayer) }
           : undefined,
         detail: "Penalty saved",
       });
@@ -354,14 +384,20 @@ function mapEvents(
     }
 
     if (type.includes("miss") && type.includes("penalty")) {
+      const pPlayer = play?.participants?.[0];
+      const pPlayerName = pPlayer ? safeName(pPlayer) : "";
+      const eventKey = `penalty_missed-${minVal}-${stopVal}-${team}-${pPlayerName}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-pmiss`),
-        minute: minute ?? 0,
+        minute: minVal,
         stoppage,
         type: "penalty_missed",
         team,
-        player: play?.participants?.[0]
-          ? { id: String(play.participants[0].athlete?.id ?? ""), name: safeName(play.participants[0]) }
+        player: pPlayer
+          ? { id: String(pPlayer.athlete?.id ?? ""), name: safeName(pPlayer) }
           : undefined,
         detail: "Penalty missed",
       });
@@ -371,9 +407,14 @@ function mapEvents(
     if (type.includes("yellow") || (isDetailFormat && play.yellowCard)) {
       const participants = play?.participants ?? [];
       const player = isDetailFormat ? participants[0] : participants[0];
+      const pName = player ? safeName(player) : "";
+      const eventKey = `yellow_card-${minVal}-${stopVal}-${team}-${pName}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-yc`),
-        minute: minute ?? 0,
+        minute: minVal,
         stoppage,
         type: "yellow_card",
         team,
@@ -388,9 +429,14 @@ function mapEvents(
     if (type.includes("red") || (isDetailFormat && play.redCard)) {
       const participants = play?.participants ?? [];
       const player = isDetailFormat ? participants[0] : participants[0];
+      const pName = player ? safeName(player) : "";
+      const eventKey = `red_card-${minVal}-${stopVal}-${team}-${pName}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-rc`),
-        minute: minute ?? 0,
+        minute: minVal,
         stoppage,
         type: "red_card",
         team,
@@ -405,9 +451,15 @@ function mapEvents(
     if (type.includes("substitution")) {
       const inP = play?.participants?.find((p: any) => p?.type === "IN" || p?.position === "in");
       const outP = play?.participants?.find((p: any) => p?.type === "OUT" || p?.position === "out");
+      const inName = inP ? safeName(inP) : "";
+      const outName = outP ? safeName(outP) : "";
+      const eventKey = `substitution-${minVal}-${stopVal}-${team}-${inName}-${outName}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-sub`),
-        minute: minute ?? 0,
+        minute: minVal,
         stoppage,
         type: "substitution",
         team,
@@ -420,12 +472,17 @@ function mapEvents(
     }
 
     if (type.includes("half") || type.includes("end of period")) {
+      const isHT = minVal <= 45;
+      const eventKey = `period-${isHT ? "half_time" : "full_time"}-${minVal}-${stopVal}`;
+      if (seenKeys.has(eventKey)) continue;
+      seenKeys.add(eventKey);
+
       events.push({
         id: String(play?.id ?? `evt-${minute}-ht`),
-        minute: minute ?? 90,
-        type: minute && minute <= 45 ? "half_time" : "full_time",
+        minute: minVal || (isHT ? 45 : 90),
+        type: isHT ? "half_time" : "full_time",
         team: "home",
-        detail: minute && minute <= 45 ? "Half time" : "Full time",
+        detail: isHT ? "Half time" : "Full time",
       });
       continue;
     }
@@ -522,7 +579,12 @@ function mapLineups(
         ? extractSubMinute(playerPlaysForEvent(p, false))
         : null;
 
-      const minutes = computeMinutesPlayed(starter, subOnMinute, subOffMinute);
+      const minutes = computeMinutesPlayed(
+        starter,
+        subOnMinute,
+        subOffMinute,
+        getMatchDuration(summary)
+      );
       const stats = extractStats(p);
       const position = mapPosition(athlete?.position?.abbreviation ?? p?.position?.abbreviation);
       const rating = extractRating(athlete, p, position);
@@ -549,6 +611,8 @@ function mapLineups(
         saves: stats.saves,
         isUnitedPlayer: Boolean(matched),
         unitedPlayerId: matched?.id,
+        penaltySaves: stats.penaltySaves,
+        penaltyMisses: stats.penaltyMisses,
       };
 
       // Decide the per-player clean sheet from the team-level result.
@@ -596,12 +660,34 @@ function extractSubMinute(plays: any[]): number | null {
 function computeMinutesPlayed(
   starter: boolean,
   subOn: number | null,
-  subOff: number | null
+  subOff: number | null,
+  matchDuration: number = 90
 ): number {
-  if (starter && subOff == null) return 90;
-  if (!starter && subOn != null) return Math.max(0, 90 - subOn);
+  if (starter && subOff == null) return matchDuration;
+  if (!starter && subOn != null) return Math.max(0, matchDuration - subOn);
   if (starter && subOff != null) return subOff;
   return 0;
+}
+
+function getMatchDuration(summary: EspnSummary): number {
+  const candidates = [
+    ...(summary?.plays ?? []),
+    ...(summary?.header?.competitions?.[0]?.details ?? []),
+  ];
+
+  let duration = 90;
+  for (const item of candidates) {
+    const type = String(item?.type?.text ?? item?.type?.abbreviation ?? "").toLowerCase();
+    const minute = parseClockMinute(item?.clock);
+    if (
+      minute !== null &&
+      minute > duration &&
+      (type.includes("full") || type.includes("end of period") || type.includes("half"))
+    ) {
+      duration = minute;
+    }
+  }
+  return duration;
 }
 
 function extractRating(athlete: any, p: any, position: PlayerPosition): number | null {
@@ -668,14 +754,16 @@ function computeRatingFromStats(p: any, position: PlayerPosition): number | null
 }
 
 function extractStats(p: any): {
-  goals: number;
-  assists: number;
-  yellowCards: number;
-  redCards: number;
-  ownGoals: number;
-  goalsConceded: number;
-  saves: number;
+  goals: number | undefined;
+  assists: number | undefined;
+  yellowCards: number | undefined;
+  redCards: number | undefined;
+  ownGoals: number | undefined;
+  goalsConceded: number | undefined;
+  saves: number | undefined;
   cleanSheet: boolean | undefined;
+  penaltySaves: number | undefined;
+  penaltyMisses: number | undefined;
 } {
   const arr = p?.stats ?? [];
   // Match by ESPN's stable stat name first, then by abbreviation/label as a
@@ -688,7 +776,11 @@ function extractStats(p: any): {
       re.test(s?.name ?? "") || re.test(s?.abbreviation ?? "") || re.test(s?.displayName ?? "")
     );
 
-  const toNum = (s: any) => (s === null || s === undefined ? 0 : Math.round(parseFloat(String(s))) || 0);
+  const toNum = (s: any) => {
+    if (s === null || s === undefined) return undefined;
+    const parsed = parseFloat(String(s));
+    return Number.isFinite(parsed) ? Math.round(parsed) : undefined;
+  };
 
   const goals = toNum(findName("totalGoals")?.value ?? findRe(/^goals?$/i)?.value);
   const assists = toNum(findName("goalAssists")?.value ?? findRe(/^assists?$/i)?.value);
@@ -697,6 +789,8 @@ function extractStats(p: any): {
   const ownGoals = toNum(findName("ownGoals")?.value);
   const goalsConceded = toNum(findName("goalsConceded")?.value);
   const saves = toNum(findName("saves")?.value);
+  const penaltySaves = toNum(findName("penaltySaves")?.value ?? findRe(/penaltySaves|penaltiesSaved/i)?.value);
+  const penaltyMisses = toNum(findName("penaltyMisses")?.value ?? findRe(/penaltyMisses|penaltiesMissed/i)?.value);
   // Don't infer clean sheets at the per-player level - ESPN's per-player
   // goalsConceded reflects what the team conceded while this player was on
   // the pitch, not whether the team ended with a clean sheet.  Awarding a
@@ -705,7 +799,7 @@ function extractStats(p: any): {
   // sheet by comparing the final team score.
   const cleanSheet = Boolean(findName("cleanSheet")?.value) || undefined;
 
-  return { goals, assists, yellowCards, redCards, ownGoals, goalsConceded, saves, cleanSheet };
+  return { goals, assists, yellowCards, redCards, ownGoals, goalsConceded, saves, cleanSheet, penaltySaves, penaltyMisses };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -787,8 +881,14 @@ export async function fetchAllFixtures(
 ): Promise<Match[]> {
   const all: Match[] = [];
   const seen = new Set<string>();
-  for (const c of COMPETITION_SLUGS) {
-    const fixtures = await listCompetitionFixtures(c.slug, c.matchType, c.name, options.dateRange);
+  const settled = await Promise.allSettled(
+    COMPETITION_SLUGS.map((c) =>
+      listCompetitionFixtures(c.slug, c.matchType, c.name, options.dateRange)
+    )
+  );
+  for (const result of settled) {
+    if (result.status === "rejected") continue;
+    const fixtures = result.value;
     for (const f of fixtures) {
       if (seen.has(f.id)) continue;
       seen.add(f.id);
@@ -820,16 +920,16 @@ export async function fetchMatchDetails(match: Match): Promise<Match> {
             enriched.away.name
           );
           if (fotmobId) {
-            const fotmobRatings = await fetchFotmobLineupRatings(fotmobId);
-            if (fotmobRatings) {
+            const fotmobData = await fetchFotmobMatchData(fotmobId);
+            if (fotmobData?.ratings) {
               enriched.lineups = {
-                home: applyFotmobRatings(enriched.lineups.home, fotmobRatings),
-                away: applyFotmobRatings(enriched.lineups.away, fotmobRatings),
+                home: applyFotmobRatings(enriched.lineups.home, fotmobData.ratings),
+                away: applyFotmobRatings(enriched.lineups.away, fotmobData.ratings),
               };
             }
 
             // Override MOTM with FotMob data if available
-            const fotmobMotm = await fetchFotmobMotm(fotmobId);
+            const fotmobMotm = fotmobData?.motm;
             if (fotmobMotm && fotmobMotm.name) {
               const motmTeamNorm = normaliseName(fotmobMotm.teamName);
               const isHome =

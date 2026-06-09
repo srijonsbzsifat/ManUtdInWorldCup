@@ -112,9 +112,29 @@ function processLineup(
     stats.yellowCards += player.yellowCards ?? 0;
     stats.redCards += player.redCards ?? 0;
     stats.ownGoals += player.ownGoals ?? 0;
-    // Goalkeeper-specific totals - goalsConceded reflects the team total on
-    // this side, not the per-player value, so we feed the score through.
-    stats.goalsConceded += side === "home" ? (match.score.away ?? 0) : (match.score.home ?? 0);
+    // Goalkeeper-specific totals - calculate exact goals conceded while on the pitch.
+    // Falls back to team score if events list is empty.
+    if (player.position === "GK") {
+      const opponentScore = side === "home" ? (match.score.away ?? 0) : (match.score.home ?? 0);
+      const goalEvents = (match.events ?? []).filter(
+        (e) => (e.type === "goal" || e.type === "own_goal" || e.type === "penalty_scored") && e.team !== side
+      );
+      if (goalEvents.length > 0) {
+        let conceded = 0;
+        for (const event of goalEvents) {
+          const goalMin = event.minute;
+          const onPitch = player.starter
+            ? (player.subOffMinute == null || goalMin <= player.subOffMinute)
+            : (player.subOnMinute != null && goalMin >= player.subOnMinute && (player.subOffMinute == null || goalMin <= player.subOffMinute));
+          if (onPitch) {
+            conceded += 1;
+          }
+        }
+        stats.goalsConceded += conceded;
+      } else {
+        stats.goalsConceded += opponentScore;
+      }
+    }
     stats.saves += player.saves ?? 0;
     // Award a clean sheet at the team level.  GKs only get credit if they
     // actually played at least one minute (no credit for unused subs);

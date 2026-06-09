@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 
 interface Option {
@@ -26,6 +26,12 @@ export function Select({
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 160 });
   const wrapperRef = useRef<HTMLDivElement>(null);
 
+  const updateMenuPosition = useCallback(() => {
+    if (!wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    setMenuPos({ top: rect.bottom, left: rect.left, width: rect.width });
+  }, []);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -39,14 +45,34 @@ export function Select({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+
+    const handleScroll = () => updateMenuPosition();
+    const handleResize = () => updateMenuPosition();
+
+    const wrapper = wrapperRef.current;
+    const observer =
+      typeof ResizeObserver !== "undefined" && wrapper
+        ? new ResizeObserver(updateMenuPosition)
+        : null;
+    if (observer && wrapper) observer.observe(wrapper);
+
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [open, updateMenuPosition]);
+
   const selected = options.find((o) => o.value === value);
   const display = selected ? selected.label : allLabel;
 
   function openMenu() {
-    if (wrapperRef.current) {
-      const rect = wrapperRef.current.getBoundingClientRect();
-      setMenuPos({ top: rect.bottom, left: rect.left, width: rect.width });
-    }
+    updateMenuPosition();
     setOpen(true);
   }
 
@@ -76,9 +102,9 @@ export function Select({
       {open && typeof document !== "undefined" && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <div
-              id="select-options"
-              style={{
+          <div
+            id="select-options"
+            style={{
               position: "fixed",
               top: `${menuPos.top + 4}px`,
               left: `${menuPos.left}px`,
@@ -92,9 +118,8 @@ export function Select({
               role="option"
               aria-selected={value === "All"}
               onMouseDown={(e) => { e.preventDefault(); onChange("All"); setOpen(false); }}
-              className={`block w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/10 ${
-                value === "All" ? "text-white" : "text-white/60"
-              }`}
+              className={`block w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/10 ${value === "All" ? "text-white" : "text-white/60"
+                }`}
             >
               {allLabel}
             </button>
@@ -105,9 +130,8 @@ export function Select({
                 role="option"
                 aria-selected={value === opt.value}
                 onMouseDown={(e) => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
-                className={`block w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/10 ${
-                  value === opt.value ? "text-white" : "text-white/60"
-                }`}
+                className={`block w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/10 ${value === opt.value ? "text-white" : "text-white/60"
+                  }`}
               >
                 {opt.label}
               </button>

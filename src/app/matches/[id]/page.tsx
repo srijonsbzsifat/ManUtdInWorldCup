@@ -267,6 +267,21 @@ function LineupRow({
         )}
         {(player.yellowCards ?? 0) > 0 && <span className="text-[10px]">🟨</span>}
         {(player.redCards ?? 0) > 0 && <span className="text-[10px]">🟥</span>}
+        {(player.ownGoals ?? 0) > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">
+            🔴 {player.ownGoals}
+          </span>
+        )}
+        {(player.penaltySaves ?? 0) > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300" title="Penalty saves">
+            🧤 {player.penaltySaves}
+          </span>
+        )}
+        {(player.penaltyMisses ?? 0) > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">
+            ❌ {player.penaltyMisses}
+          </span>
+        )}
         <RatingBadge rating={player.rating} size="sm" />
       </div>
     </div>
@@ -274,56 +289,62 @@ function LineupRow({
 }
 
 function GoalScorersSummary({ match }: { match: Match }) {
-  const goalEvents = match.events.filter(
-    e => e.type === "goal" || e.type === "penalty_scored"
+  const scoringEvents = match.events.filter(
+    e => e.type === "goal" || e.type === "penalty_scored" || e.type === "own_goal"
   );
 
-  if (goalEvents.length === 0) return null;
+  if (scoringEvents.length === 0) return null;
 
-  const homeGoals = goalEvents.filter(e => e.team === "home");
-  const awayGoals = goalEvents.filter(e => e.team === "away");
+  const homeScoring = scoringEvents.filter(e => e.team === "home");
+  const awayScoring = scoringEvents.filter(e => e.team === "away");
 
   return (
     <div className="glass p-4 space-y-3">
       <div className="grid grid-cols-[1fr_auto_1fr] gap-4">
-        <div className={cn("space-y-1", homeGoals.length === 0 && "opacity-50")}>
-          {homeGoals.map((goal, i) => (
-            <div key={i} className="flex items-center justify-end gap-2 text-sm">
-              <span className="text-white/90">{goal.player?.name}</span>
-              {goal.assistPlayer && (
-                <span className="text-[10px] text-white/40">
-                  ({goal.assistPlayer.name})
+        <div className={cn("space-y-1", homeScoring.length === 0 && "opacity-50")}>
+          {homeScoring.map((event, i) => {
+            const isOwnGoal = event.type === "own_goal";
+            return (
+              <div key={i} className="flex items-center justify-end gap-2 text-sm">
+                <span className="text-white/90">{event.player?.name}</span>
+                {event.assistPlayer && (
+                  <span className="text-[10px] text-white/40">
+                    (assist: {event.assistPlayer.name})
+                  </span>
+                )}
+                <span className="text-xs text-white/50 font-mono">
+                  {event.minute}{event.stoppage ? `+${event.stoppage}` : ""}&apos;
                 </span>
-              )}
-              <span className="text-xs text-white/50 font-mono">
-                {goal.minute}{goal.stoppage ? `+${goal.stoppage}` : ""}&apos;
-              </span>
-              <span>⚽</span>
-            </div>
-          ))}
-          {homeGoals.length === 0 && (
+                <span>{isOwnGoal ? "🔴 (OG)" : "⚽"}</span>
+              </div>
+            );
+          })}
+          {homeScoring.length === 0 && (
             <div className="text-sm text-white/40 text-right">No goals</div>
           )}
         </div>
 
         <div className="w-px bg-white/10" />
 
-        <div className={cn("space-y-1", awayGoals.length === 0 && "opacity-50")}>
-          {awayGoals.map((goal, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm">
-              <span>⚽</span>
-              <span className="text-xs text-white/50 font-mono">
-                {goal.minute}{goal.stoppage ? `+${goal.stoppage}` : ""}&apos;
-              </span>
-              <span className="text-white/90">{goal.player?.name}</span>
-              {goal.assistPlayer && (
-                <span className="text-[10px] text-white/40">
-                  ({goal.assistPlayer.name})
+        <div className={cn("space-y-1", awayScoring.length === 0 && "opacity-50")}>
+          {awayScoring.map((event, i) => {
+            const isOwnGoal = event.type === "own_goal";
+            return (
+              <div key={i} className="flex items-center gap-2 text-sm">
+                <span>{(isOwnGoal ? "🔴 (OG)" : "⚽")}</span>
+                <span className="text-xs text-white/50 font-mono">
+                  {event.minute}{event.stoppage ? `+${event.stoppage}` : ""}&apos;
                 </span>
-              )}
-            </div>
-          ))}
-          {awayGoals.length === 0 && (
+                <span className="text-white/90">{event.player?.name}</span>
+                {event.assistPlayer && (
+                  <span className="text-[10px] text-white/40">
+                    (assist: {event.assistPlayer.name})
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {awayScoring.length === 0 && (
             <div className="text-sm text-white/40">No goals</div>
           )}
         </div>
@@ -376,8 +397,10 @@ function EventRow({ event, align }: { event: MatchEvent; align: "left" | "right"
   const icon = (() => {
     switch (event.type) {
       case "goal": return "⚽";
+      case "own_goal": return "🔴"; // Red football for own goal
       case "penalty_scored": return "⚽";
       case "penalty_missed": return "❌";
+      case "penalty_saved": return "🧤"; // Goalkeeper glove for penalty save
       case "yellow_card": return "🟨";
       case "red_card": return "🟥";
       case "substitution": return "🔁";
@@ -408,6 +431,35 @@ function EventRow({ event, align }: { event: MatchEvent; align: "left" | "right"
               <div className="text-[10px] text-white/50 mt-0.5">
                 Score: {event.scoreAfter.home} - {event.scoreAfter.away}
               </div>
+            )}
+          </>
+        ) : event.type === "own_goal" ? (
+          <>
+            <div className="font-semibold text-red-500">
+              {event.player?.name} (OG)
+            </div>
+            {event.scoreAfter && (
+              <div className="text-[10px] text-white/50 mt-0.5">
+                Score: {event.scoreAfter.home} - {event.scoreAfter.away}
+              </div>
+            )}
+          </>
+        ) : event.type === "penalty_missed" ? (
+          <>
+            <div className="font-semibold">
+              {event.player?.name} (Penalty missed)
+            </div>
+            {event.detail && (
+              <div className="text-[10px] text-white/50 mt-0.5">{event.detail}</div>
+            )}
+          </>
+        ) : event.type === "penalty_saved" ? (
+          <>
+            <div className="font-semibold">
+              {event.player?.name} (Penalty saved)
+            </div>
+            {event.detail && (
+              <div className="text-[10px] text-white/50 mt-0.5">{event.detail}</div>
             )}
           </>
         ) : event.type === "substitution" ? (

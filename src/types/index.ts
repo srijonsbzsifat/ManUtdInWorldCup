@@ -97,6 +97,10 @@ export interface LineupPlayer {
   redCards?: number;
   /** Own goals scored. */
   ownGoals?: number;
+  /** Penalty saves (for goalkeepers). */
+  penaltySaves?: number;
+  /** Penalty misses. */
+  penaltyMisses?: number;
   /** Conceded goals (for goalkeepers / defenders, to compute clean sheets). */
   goalsConceded?: number;
   /** Saves (GK). */
@@ -123,6 +127,8 @@ export interface MatchEvent {
     | "var"
     | "penalty_missed"
     | "penalty_scored"
+    | "penalty_saved"
+    | "own_goal"
     | "kickoff"
     | "half_time"
     | "full_time"

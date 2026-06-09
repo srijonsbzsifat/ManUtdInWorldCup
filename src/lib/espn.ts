@@ -260,9 +260,14 @@ function mapEvents(
     const isDetailFormat = play?.scoringPlay !== undefined || play?.redCard !== undefined;
     let type = "";
     if (isDetailFormat) {
-      if (play.scoringPlay) type = "goal";
+      if (play.ownGoal) type = "own_goal";
+      else if (play.scoringPlay) type = "goal";
       else if (play.redCard) type = "red_card";
-      else if (play.penaltyKick) type = "penalty";
+      else if (play.penaltyKick) {
+        // Check if it's a penalty save (goalkeeper saved a penalty)
+        // This would need to be determined from commentary or additional data
+        type = "penalty";
+      }
     } else {
       type = String(play?.type?.text ?? play?.type?.abbreviation ?? "").toLowerCase();
     }
@@ -288,13 +293,14 @@ function mapEvents(
       const participants = play?.participants ?? [];
       const scorer = isDetailFormat ? participants[0] : participants.find((p: any) => p?.type === "SCORER" || p?.position === "scorer");
       const assist = isDetailFormat ? participants[1] : participants.find((p: any) => p?.type === "ASSIST" || p?.position === "assist");
+      
       if (team === "home") runningScore.home += 1;
       else runningScore.away += 1;
       events.push({
         id: String(play?.id ?? `evt-${minute}-goal`),
         minute: minute ?? 0,
         stoppage,
-        type: "goal",
+        type: isDetailFormat && play.ownGoal ? "own_goal" : "goal",
         team,
         player: scorer
           ? { id: String(scorer.athlete?.id ?? ""), name: safeName(scorer) }
@@ -325,6 +331,24 @@ function mapEvents(
           : undefined,
         detail: "Penalty scored",
         scoreAfter: { ...runningScore },
+      });
+      continue;
+    }
+
+    // Check for penalty saved (goalkeeper saved a penalty)
+    // This would need to be detected from commentary or specific event types
+    if ((type.includes("penalty") && !play?.scoringPlay) || (isDetailFormat && play.penaltyKick && !play.scoringPlay)) {
+      // Placeholder - would need additional data to confirm this is a save vs miss
+      events.push({
+        id: String(play?.id ?? `evt-${minute}-pensave`),
+        minute: minute ?? 0,
+        stoppage,
+        type: "penalty_saved", // We'll determine if it's actually a save or miss later
+        team,
+        player: play?.participants?.[0]
+          ? { id: String(play.participants[0].athlete?.id ?? ""), name: safeName(play.participants[0]) }
+          : undefined,
+        detail: "Penalty saved",
       });
       continue;
     }

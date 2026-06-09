@@ -251,10 +251,22 @@ function mapEvents(
 ): MatchEvent[] {
   const events: MatchEvent[] = [];
   const plays = summary?.plays ?? [];
+  const details = summary?.header?.competitions?.[0]?.details ?? [];
+  const allEvents = [...plays, ...details];
   let runningScore = { home: 0, away: 0 };
 
-  for (const play of plays) {
-    const type = String(play?.type?.text ?? play?.type?.abbreviation ?? "").toLowerCase();
+  for (const play of allEvents) {
+    // Handle both formats: plays (type.text/type.abbreviation) and details (scoringPlay/redCard flags)
+    const isDetailFormat = play?.scoringPlay !== undefined || play?.redCard !== undefined;
+    let type = "";
+    if (isDetailFormat) {
+      if (play.scoringPlay) type = "goal";
+      else if (play.redCard) type = "red_card";
+      else if (play.penaltyKick) type = "penalty";
+    } else {
+      type = String(play?.type?.text ?? play?.type?.abbreviation ?? "").toLowerCase();
+    }
+    
     const teamId = play?.team?.id;
     const team: "home" | "away" = String(teamId) === String(homeTeamId) ? "home" : "away";
     const minute = parseClockMinute(play?.clock);
@@ -271,9 +283,11 @@ function mapEvents(
       continue;
     }
 
-    if (type.includes("goal")) {
-      const scorer = play?.participants?.find((p: any) => p?.type === "SCORER" || p?.position === "scorer");
-      const assist = play?.participants?.find((p: any) => p?.type === "ASSIST" || p?.position === "assist");
+    if (type.includes("goal") || (isDetailFormat && play.scoringPlay)) {
+      // In detail format, first participant is scorer, second (if present) is assist
+      const participants = play?.participants ?? [];
+      const scorer = isDetailFormat ? participants[0] : participants.find((p: any) => p?.type === "SCORER" || p?.position === "scorer");
+      const assist = isDetailFormat ? participants[1] : participants.find((p: any) => p?.type === "ASSIST" || p?.position === "assist");
       if (team === "home") runningScore.home += 1;
       else runningScore.away += 1;
       events.push({
@@ -294,8 +308,10 @@ function mapEvents(
       continue;
     }
 
-    if (type.includes("penalty") && play?.scoringPlay) {
-      const scorer = play?.participants?.find((p: any) => p?.type === "SCORER" || p?.position === "scorer");
+    if ((type.includes("penalty") && play?.scoringPlay) || (isDetailFormat && play.penaltyKick && play.scoringPlay)) {
+      // In detail format, first participant is scorer
+      const participants = play?.participants ?? [];
+      const scorer = isDetailFormat ? participants[0] : participants.find((p: any) => p?.type === "SCORER" || p?.position === "scorer");
       if (team === "home") runningScore.home += 1;
       else runningScore.away += 1;
       events.push({
@@ -328,30 +344,34 @@ function mapEvents(
       continue;
     }
 
-    if (type.includes("yellow")) {
+    if (type.includes("yellow") || (isDetailFormat && play.yellowCard)) {
+      const participants = play?.participants ?? [];
+      const player = isDetailFormat ? participants[0] : participants[0];
       events.push({
         id: String(play?.id ?? `evt-${minute}-yc`),
         minute: minute ?? 0,
         stoppage,
         type: "yellow_card",
         team,
-        player: play?.participants?.[0]
-          ? { id: String(play.participants[0].athlete?.id ?? ""), name: safeName(play.participants[0]) }
+        player: player
+          ? { id: String(player.athlete?.id ?? ""), name: safeName(player) }
           : undefined,
         detail: play?.text,
       });
       continue;
     }
 
-    if (type.includes("red")) {
+    if (type.includes("red") || (isDetailFormat && play.redCard)) {
+      const participants = play?.participants ?? [];
+      const player = isDetailFormat ? participants[0] : participants[0];
       events.push({
         id: String(play?.id ?? `evt-${minute}-rc`),
         minute: minute ?? 0,
         stoppage,
         type: "red_card",
         team,
-        player: play?.participants?.[0]
-          ? { id: String(play.participants[0].athlete?.id ?? ""), name: safeName(play.participants[0]) }
+        player: player
+          ? { id: String(player.athlete?.id ?? ""), name: safeName(player) }
           : undefined,
         detail: play?.text,
       });
@@ -394,17 +414,30 @@ function parseClockMinute(clock: any): number | null {
   if (typeof clock === "number") return clock;
   // The roster-level plays use `{ clock: { displayValue: "45'" } }`.  The
   // top-level plays use `{ clock: "45'" }` (or "45'+2").  Handle both.
-  const raw =
-    typeof clock === "string"
-      ? clock
-      : clock.displayValue ?? clock.value ?? "";
+  // Details format uses `{ clock: { displayValue: "45'+2'", value: 2700 } }`
+  // and `{ addedClock: { displayValue: "2", value: 95 } }`
+  const raw = typeof clock === "string"
+    ? clock
+    : clock.displayValue ?? clock.value ?? "";
   const m = String(raw).match(/(\d+)/);
   return m ? parseInt(m[1], 10) : null;
 }
 
 function parseStoppage(clock: any): number | undefined {
   if (!clock) return undefined;
-  const m = String(clock).match(/\+(\d+)/);
+  // Check addedClock first (details format)
+  if (clock.addedClock !== undefined) {
+    const raw = typeof clock.addedClock === "string"
+      ? clock.addedClock
+      : clock.addedClock.displayValue ?? clock.addedClock.value ?? "";
+    const m = String(raw).match(/(\d+)/);
+    if (m) return parseInt(m[1], 10);
+  }
+  // Fallback to clock displayValue
+  const raw = typeof clock === "string"
+    ? clock
+    : clock.displayValue ?? clock.value ?? "";
+  const m = String(raw).match(/\+(\d+)/);
   return m ? parseInt(m[1], 10) : undefined;
 }
 

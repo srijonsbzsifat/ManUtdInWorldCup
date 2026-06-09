@@ -45,6 +45,8 @@ export default function MatchPage({ params }: { params: { id: string } }) {
 
       <MatchHeader match={match} />
 
+      {match.events.length > 0 && <GoalScorersSummary match={match} />}
+
       {match.lineups ? (
         <div className="grid lg:grid-cols-2 gap-4">
           <LineupPanel side="home" match={match} />
@@ -271,24 +273,106 @@ function LineupRow({
   );
 }
 
+function GoalScorersSummary({ match }: { match: Match }) {
+  const goalEvents = match.events.filter(
+    e => e.type === "goal" || e.type === "penalty_scored"
+  );
+
+  if (goalEvents.length === 0) return null;
+
+  const homeGoals = goalEvents.filter(e => e.team === "home");
+  const awayGoals = goalEvents.filter(e => e.team === "away");
+
+  return (
+    <div className="glass p-4 space-y-3">
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-4">
+        <div className={cn("space-y-1", homeGoals.length === 0 && "opacity-50")}>
+          {homeGoals.map((goal, i) => (
+            <div key={i} className="flex items-center justify-end gap-2 text-sm">
+              <span className="text-white/90">{goal.player?.name}</span>
+              {goal.assistPlayer && (
+                <span className="text-[10px] text-white/40">
+                  ({goal.assistPlayer.name})
+                </span>
+              )}
+              <span className="text-xs text-white/50 font-mono">
+                {goal.minute}{goal.stoppage ? `+${goal.stoppage}` : ""}&apos;
+              </span>
+              <span>⚽</span>
+            </div>
+          ))}
+          {homeGoals.length === 0 && (
+            <div className="text-sm text-white/40 text-right">No goals</div>
+          )}
+        </div>
+
+        <div className="w-px bg-white/10" />
+
+        <div className={cn("space-y-1", awayGoals.length === 0 && "opacity-50")}>
+          {awayGoals.map((goal, i) => (
+            <div key={i} className="flex items-center gap-2 text-sm">
+              <span>⚽</span>
+              <span className="text-xs text-white/50 font-mono">
+                {goal.minute}{goal.stoppage ? `+${goal.stoppage}` : ""}&apos;
+              </span>
+              <span className="text-white/90">{goal.player?.name}</span>
+              {goal.assistPlayer && (
+                <span className="text-[10px] text-white/40">
+                  ({goal.assistPlayer.name})
+                </span>
+              )}
+            </div>
+          ))}
+          {awayGoals.length === 0 && (
+            <div className="text-sm text-white/40">No goals</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EventsTimeline({ match }: { match: Match }) {
   const events = [...match.events].sort((a, b) => {
     if (a.minute !== b.minute) return a.minute - b.minute;
     return (a.stoppage ?? 0) - (b.stoppage ?? 0);
   });
+  
+  const homeEvents = events.filter(e => e.team === "home");
+  const awayEvents = events.filter(e => e.team === "away");
+
   return (
     <section>
       <h2 className="text-lg font-semibold mb-3">Match events</h2>
-      <div className="glass p-4 space-y-2">
-        {events.map((e) => (
-          <EventRow key={e.id} event={e} />
-        ))}
+      <div className="grid grid-cols-2 gap-4">
+        <EventColumn teamName={match.home.shortName} teamColor={match.home.color} events={homeEvents} align="right" />
+        <EventColumn teamName={match.away.shortName} teamColor={match.away.color} events={awayEvents} align="left" />
       </div>
     </section>
   );
 }
 
-function EventRow({ event }: { event: MatchEvent }) {
+function EventColumn({ teamName, teamColor, events, align }: { teamName: string; teamColor: string; events: MatchEvent[]; align: "left" | "right" }) {
+  return (
+    <div className="glass p-4 space-y-2">
+      <div className={`text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-2 ${align === "right" ? "text-right" : ""}`}>
+        {teamName}
+      </div>
+      <div className="w-full h-px bg-white/10 mb-2" />
+      {events.length > 0 ? (
+        <div className="space-y-2">
+          {events.map((e) => (
+            <EventRow key={e.id} event={e} align={align} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-white/40 text-center py-4">No events</div>
+      )}
+    </div>
+  );
+}
+
+function EventRow({ event, align }: { event: MatchEvent; align: "left" | "right" }) {
   const icon = (() => {
     switch (event.type) {
       case "goal": return "⚽";

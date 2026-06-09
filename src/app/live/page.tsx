@@ -49,7 +49,7 @@ export default function LivePage() {
             World Cup or international friendlies.
           </p>
           <a
-            href="/matches?status=upcoming"
+            href="/matches?tab=upcoming"
             className="inline-block mt-4 px-4 py-2 rounded-lg bg-united-red text-white text-sm font-semibold"
           >
             View upcoming matches

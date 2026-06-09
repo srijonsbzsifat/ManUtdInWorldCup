@@ -1,31 +1,12 @@
 import { NextResponse } from "next/server";
-import { fetchAllFixtures, fetchMatchDetails } from "@/lib/espn";
+import { fetchMatchDetails } from "@/lib/espn";
 import { NATIONAL_TEAMS } from "@/lib/players";
 import { computeTournamentStats, topPerformers } from "@/lib/aggregator";
+import { getCachedFixtures } from "@/lib/fixture-cache";
 import type { Match } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
-
-const FIXTURE_CACHE_TTL_MS = 5 * 60 * 1000;
-let fixtureCache:
-  | { key: string; expiresAt: number; fixtures: Match[] }
-  | null = null;
-
-async function getCachedFixtures(dateRange: { start: Date; end: Date }) {
-  const key = `${dateRange.start.toISOString().slice(0, 10)}|${dateRange.end.toISOString().slice(0, 10)}`;
-  if (fixtureCache && fixtureCache.key === key && Date.now() < fixtureCache.expiresAt) {
-    return fixtureCache.fixtures;
-  }
-
-  const fixtures = await fetchAllFixtures({ dateRange });
-  fixtureCache = {
-    key,
-    expiresAt: Date.now() + FIXTURE_CACHE_TTL_MS,
-    fixtures,
-  };
-  return fixtures;
-}
 
 export async function GET() {
   try {

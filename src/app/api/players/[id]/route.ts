@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPlayerById } from "@/lib/players";
-import { fetchAllFixtures, fetchMatchDetails } from "@/lib/espn";
+import { fetchMatchDetails } from "@/lib/espn";
+import { getCachedFixtures } from "@/lib/fixture-cache";
 import { computePlayerPerformances, computeTournamentStats } from "@/lib/aggregator";
 
 export const revalidate = 30;
@@ -23,27 +24,41 @@ export async function GET(
     const end = new Date(today);
     end.setDate(end.getDate() + 30);
 
-    const fixtures = await fetchAllFixtures({ dateRange: { start, end } });
+    const fixtures = await getCachedFixtures({ start, end });
     // Hydrate details (lineups, events) for every match involving this player's
     // national team - the summary endpoint is heavier so we limit it to the
     // matches we care about.
     const teamMatchSlugs = fixtures.filter(
       (m) => m.home.code === player.nation.code || m.away.code === player.nation.code
     );
-    const detailed = await Promise.all(
+    const detailedResults = await Promise.allSettled(
       teamMatchSlugs.map((m) =>
         m.lineups ? Promise.resolve(m) : fetchMatchDetails(m)
       )
     );
+    const detailed = detailedResults
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
+      .map((r) => r.value);
+    const failed = detailedResults.filter((r) => r.status === "rejected").length;
+    if (failed > 0) {
+      console.warn(`player ${params.id}: ${failed}/${teamMatchSlugs.length} match detail fetches failed`);
+    }
 
     const performances = computePlayerPerformances(detailed, player.id);
     const tournamentStats = computeTournamentStats(detailed)[player.id];
+
+    // Fetch upcoming fixtures for the player's nation
+    const allFixtures = await getCachedFixtures({ start: new Date(), end: new Date(new Date().getTime() + 30 * 24 * 60 * 60 * 1000) });
+    const nextFixtures = allFixtures
+      .filter((m) => (m.status === "SCHEDULED" || m.status === "TIMED") && (m.home.code === player.nation.code || m.away.code === player.nation.code))
+      .slice(0, 3);
 
     return NextResponse.json({
       player,
       performances,
       stats: tournamentStats,
       matchesInWindow: teamMatchSlugs.length,
+      nextFixtures,
     });
   } catch (err) {
     console.error("player detail failed", err);

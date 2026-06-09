@@ -8,17 +8,18 @@ import { findUnitedPlayersInLineup } from "@/lib/aggregator";
 import { flagFallbackLabel } from "@/lib/flags";
 
 export function MatchCard({ match, compact = false }: { match: Match; compact?: boolean }) {
+  const homeHasUnitedPlayer = match.lineups
+    ? findUnitedPlayersInLineup(match.lineups.home).length > 0
+    : false;
+  const awayHasUnitedPlayer = match.lineups
+    ? findUnitedPlayersInLineup(match.lineups.away).length > 0
+    : false;
   const ourPlayers = match.lineups
     ? [
-        ...findUnitedPlayersInLineup(match.lineups.home),
-        ...findUnitedPlayersInLineup(match.lineups.away),
-      ]
+      ...findUnitedPlayersInLineup(match.lineups.home),
+      ...findUnitedPlayersInLineup(match.lineups.away),
+    ]
     : [];
-  const ourTeamCode = ourPlayers[0]?.unitedPlayerId
-    ? match.lineups?.home.some((p) => p.unitedPlayerId === ourPlayers[0].unitedPlayerId)
-      ? match.home.code
-      : match.away.code
-    : null;
 
   return (
     <Link
@@ -38,7 +39,7 @@ export function MatchCard({ match, compact = false }: { match: Match; compact?: 
       </div>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <TeamColumn team={match.home} align="right" highlight={ourTeamCode === match.home.code} />
+        <TeamColumn team={match.home} align="right" highlight={homeHasUnitedPlayer} />
         <div className="text-center px-2 min-w-[60px]">
           {match.status === "SCHEDULED" || match.status === "TIMED" ? (
             <div>
@@ -66,7 +67,7 @@ export function MatchCard({ match, compact = false }: { match: Match; compact?: 
             </div>
           )}
         </div>
-        <TeamColumn team={match.away} align="left" highlight={ourTeamCode === match.away.code} />
+        <TeamColumn team={match.away} align="left" highlight={awayHasUnitedPlayer} />
       </div>
 
       {ourPlayers.length > 0 && !compact && (
@@ -147,13 +148,12 @@ function PlayerChip({ player }: { player: LineupPlayer }) {
       </span>
       {player.rating !== null && player.rating !== undefined && (
         <span
-          className={`text-[10px] font-bold px-1.5 rounded ${
-            player.rating >= 7
+          className={`text-[10px] font-bold px-1.5 rounded ${player.rating >= 7
               ? "bg-emerald-500/30 text-emerald-300"
               : player.rating >= 6
-              ? "bg-yellow-500/30 text-yellow-300"
-              : "bg-red-500/30 text-red-300"
-          }`}
+                ? "bg-yellow-500/30 text-yellow-300"
+                : "bg-red-500/30 text-red-300"
+            }`}
         >
           {player.rating.toFixed(1)}
         </span>

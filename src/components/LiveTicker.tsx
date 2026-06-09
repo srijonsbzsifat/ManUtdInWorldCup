@@ -3,6 +3,7 @@ import useSWR from "swr";
 import { MatchCard } from "./MatchCard";
 import { LoadingSpinner } from "./LoadingSpinner";
 import type { Match } from "@/types";
+import Link from "next/link";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -18,23 +19,30 @@ export function LiveTicker() {
   );
 
   const live = data?.live ?? [];
+  const hasLiveMatches = live.length > 0;
 
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h2 className="text-base sm:text-lg font-semibold">
-            {live.length > 0 ? "Live now" : "Next fixtures"}
+            {hasLiveMatches ? "Live now" : "Live now"}
           </h2>
-          {live.length > 0 && <span className="live-dot" />}
+          {hasLiveMatches && <span className="live-dot" />}
         </div>
-        <a href="/live" className="text-xs text-white/50 hover:text-white">
-          See all →
-        </a>
+        {hasLiveMatches ? (
+          <a href="/live" className="text-xs text-white/50 hover:text-white">
+            See all →
+          </a>
+        ) : (
+          <a href="/matches?tab=upcoming" className="text-xs text-white/50 hover:text-white">
+            Check upcoming matches →
+          </a>
+        )}
       </div>
 
       {isLoading && (
-        <LoadingSpinner text="Checking for live action..." />
+        <LoadingSpinner text={hasLiveMatches ? "Checking for live action..." : "Loading upcoming fixtures..."} />
       )}
 
       {error && (
@@ -43,14 +51,14 @@ export function LiveTicker() {
         </div>
       )}
 
-      {!isLoading && live.length === 0 && (
+      {!isLoading && !hasLiveMatches && (
         <p className="text-sm text-white/50">
           No Manchester United players are currently on the pitch at the
-          World Cup or in international friendlies. Check upcoming matches →
+          World Cup or in international friendlies.
         </p>
       )}
 
-      {live.length > 0 && (
+      {hasLiveMatches && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 animate-fade-in">
           {live.slice(0, 6).map((m) => (
             <MatchCard key={m.id} match={m} />

@@ -29,7 +29,17 @@ export function Select({
   const updateMenuPosition = useCallback(() => {
     if (!wrapperRef.current) return;
     const rect = wrapperRef.current.getBoundingClientRect();
-    setMenuPos({ top: rect.bottom, left: rect.left, width: rect.width });
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const estimatedMenuHeight = 240; // max-h-60 ~= 240px plus padding
+    const top = (spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow)
+      ? Math.max(0, rect.top - estimatedMenuHeight) - 4
+      : rect.bottom;
+    // Clamp left so the dropdown doesn't go off the right edge
+    const menuWidth = Math.max(rect.width, 160);
+    const maxLeft = window.innerWidth - menuWidth - 8;
+    const left = Math.min(rect.left, maxLeft);
+    setMenuPos({ top, left, width: rect.width });
   }, []);
 
   useEffect(() => {

@@ -5,30 +5,75 @@ import type { Match } from "@/types";
 
 export const revalidate = 30;
 
+const VALID_STATUSES = ["live", "upcoming", "finished"] as const;
+const MAX_DATE = new Date("2026-07-30T23:59:59Z");
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const withDetails = url.searchParams.get("details") === "1";
   const nation = url.searchParams.get("nation") ?? undefined;
-  const status = url.searchParams.get("status") ?? undefined; // live|upcoming|finished
+  const status = url.searchParams.get("status") ?? undefined;
   const startParam = url.searchParams.get("start");
   const endParam = url.searchParams.get("end");
 
-  const MAX_DATE = new Date("2026-07-30T23:59:59Z");
+  // --- Validate status ---
+  if (status !== undefined && !VALID_STATUSES.includes(status as any)) {
+    return NextResponse.json(
+      { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` },
+      { status: 400 }
+    );
+  }
 
-  const start = startParam
-    ? new Date(startParam)
-    : (() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 30);
-        return d;
-      })();
-  const end = endParam
-    ? new Date(endParam)
-    : (() => {
-        const d = new Date();
-        d.setDate(d.getDate() + 60);
-        return d > MAX_DATE ? MAX_DATE : d;
-      })();
+  // --- Validate nation ---
+  if (nation !== undefined) {
+    const validNation = NATIONAL_TEAMS.some(
+      (t) => t.id === nation || t.code === nation.toUpperCase()
+    );
+    if (!validNation) {
+      return NextResponse.json(
+        { error: "Invalid nation parameter. Must be a valid national team ID or code." },
+        { status: 400 }
+      );
+    }
+  }
+
+  // --- Validate start / end ---
+  let start: Date;
+  let end: Date;
+
+  if (startParam) {
+    start = new Date(startParam);
+    if (isNaN(start.getTime())) {
+      return NextResponse.json(
+        { error: `Invalid start date: "${startParam}". Use ISO 8601 format (e.g. 2026-06-01).` },
+        { status: 400 }
+      );
+    }
+  } else {
+    start = new Date();
+    start.setDate(start.getDate() - 30);
+  }
+
+  if (endParam) {
+    end = new Date(endParam);
+    if (isNaN(end.getTime())) {
+      return NextResponse.json(
+        { error: `Invalid end date: "${endParam}". Use ISO 8601 format (e.g. 2026-07-01).` },
+        { status: 400 }
+      );
+    }
+  } else {
+    end = new Date();
+    end.setDate(end.getDate() + 60);
+    if (end > MAX_DATE) end = MAX_DATE;
+  }
+
+  if (start > end) {
+    return NextResponse.json(
+      { error: "start date must be before or equal to end date." },
+      { status: 400 }
+    );
+  }
 
   try {
     let matches = await fetchAllFixtures({ dateRange: { start, end } });

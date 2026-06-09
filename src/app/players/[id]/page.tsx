@@ -4,10 +4,12 @@ import { RatingBadge } from "@/components/RatingBadge";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { NationFlag } from "@/components/NationFlag";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { MatchCard } from "@/components/MatchCard";
 import type {
   UnitedPlayer,
   PlayerMatchPerformance,
   PlayerTournamentStats,
+  Match,
 } from "@/types";
 import { useMemo } from "react";
 import { formatDate, formatTime, relativeTime, cn, ratingColor, ratingLabel } from "@/lib/utils";
@@ -18,6 +20,7 @@ interface PlayerResponse {
   performances: PlayerMatchPerformance[];
   stats: PlayerTournamentStats;
   matchesInWindow: number;
+  nextFixtures: Match[];
 }
 
 export default function PlayerPage({ params }: { params: { id: string } }) {
@@ -36,7 +39,7 @@ export default function PlayerPage({ params }: { params: { id: string } }) {
       <div className="glass p-8 text-center">
         <p className="text-base font-semibold mb-1">Player not found</p>
         <p className="text-sm text-white/50 mb-4">
-          The player &quot;{id}&quot; is not in the Manchester United squad
+          The player "{id}" is not in the Manchester United squad
           tracker, or the data feed is temporarily unavailable.
         </p>
         <Link href="/players" className="text-united-red hover:underline text-sm">
@@ -46,7 +49,7 @@ export default function PlayerPage({ params }: { params: { id: string } }) {
     );
   }
 
-  const { player, stats, performances } = data;
+  const { player, stats, performances, nextFixtures } = data;
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -54,6 +57,13 @@ export default function PlayerPage({ params }: { params: { id: string } }) {
       <StatsGrid stats={stats} player={player} />
       <PerformanceLog performances={performances} />
       <RecentStats performances={performances} />
+      {nextFixtures && nextFixtures.length > 0 && (
+        <UpcomingFixturesSection
+          matches={nextFixtures}
+          title="Next Fixtures"
+          subtitle={`Next ${nextFixtures.length} games for ${player.nation.name}`}
+        />
+      )}
     </div>
   );
 }
@@ -204,9 +214,9 @@ function PerformanceRow({ perf }: { perf: PlayerMatchPerformance }) {
   const { match, player, opponent, result, score, competition } = perf;
   const resultColor =
     result === "W" ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" :
-    result === "L" ? "bg-red-500/15 text-red-300 border-red-500/30" :
-    result === "D" ? "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" :
-    "bg-white/5 text-white/60 border-white/10";
+      result === "L" ? "bg-red-500/15 text-red-300 border-red-500/30" :
+        result === "D" ? "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" :
+          "bg-white/5 text-white/60 border-white/10";
 
   return (
     <Link
@@ -336,6 +346,28 @@ function RecentStats({ performances }: { performances: PlayerMatchPerformance[] 
             <div className="text-[10px] text-white/40 uppercase">A</div>
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function UpcomingFixturesSection({
+  matches,
+  title,
+  subtitle,
+}: {
+  matches: Match[];
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <section>
+      <h2 className="text-lg font-semibold mb-3">{title}</h2>
+      <p className="text-sm text-white/50 mb-4">{subtitle}</p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {matches.map((m) => (
+          <MatchCard key={m.id} match={m} />
+        ))}
       </div>
     </section>
   );

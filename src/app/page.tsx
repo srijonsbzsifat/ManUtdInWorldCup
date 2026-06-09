@@ -89,19 +89,35 @@ function UpcomingMatches() {
   const { data, isLoading } = useSWR<{ matches: Match[] }>("/api/matches?status=upcoming", {
     refreshInterval: 60_000,
   });
-  const matches = (data?.matches ?? []).slice(0, 6);
+  const allMatches = data?.matches ?? [];
+  const displayCount = 6;
+  const hasOverflow = allMatches.length > displayCount;
+  const matches = allMatches.slice(0, displayCount);
+
   return (
     <Section title="Upcoming fixtures" subtitle="Next six games involving our nations.">
       {isLoading ? (
         <LoadingSpinner text="Loading upcoming fixtures..." />
-      ) : matches.length === 0 ? (
+      ) : allMatches.length === 0 ? (
         <p className="text-sm text-white/50">No upcoming fixtures in the next 30 days.</p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {matches.map((m) => (
-            <MatchCard key={m.id} match={m} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {matches.map((m) => (
+              <MatchCard key={m.id} match={m} />
+            ))}
+          </div>
+          {hasOverflow && (
+            <div className="mt-4 text-center">
+              <Link
+                href="/matches?tab=upcoming"
+                className="inline-block px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-semibold hover:bg-white/15 transition-colors"
+              >
+                See All &rarr;
+              </Link>
+            </div>
+          )}
+        </>
       )}
     </Section>
   );

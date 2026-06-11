@@ -1,5 +1,5 @@
 "use client";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { MatchCard } from "./MatchCard";
 import { LoadingSpinner } from "./LoadingSpinner";
 import type { Match } from "@/types";
@@ -10,12 +10,29 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 /**
  * Polls /api/live every 30s.  When there is at least one match being played
  * the section becomes a live ticker; otherwise it shows the next 5 fixtures.
+ * Cross-invalidates the upcoming fixtures endpoint so a match that just went
+ * live is immediately removed from the "Upcoming fixtures" section.
  */
 export function LiveTicker() {
+  const { mutate } = useSWRConfig();
   const { data, error, isLoading } = useSWR<{ live: Match[]; count: number }>(
     "/api/live",
     fetcher,
-    { refreshInterval: 30_000, revalidateOnFocus: true }
+    {
+      refreshInterval: 30_000,
+      revalidateOnFocus: true,
+      onSuccess: (liveData) => {
+        // When live data refreshes, also revalidate upcoming fixtures
+        // so matches that recently went live vanish from the upcoming list.
+        mutate("/api/matches?status=upcoming&limit=6");
+        // If a live match has just finished (e.g. ticker went from live→empty),
+        // revalidate the finished matches list and player stats.
+        if (!liveData?.live?.length) {
+          mutate("/api/matches?status=finished");
+          mutate("/api/stats");
+        }
+      },
+    }
   );
 
   const live = data?.live ?? [];

@@ -86,19 +86,21 @@ function Section({
 }
 
 function UpcomingMatches() {
-  const { data, isLoading } = useSWR<{ matches: Match[] }>("/api/matches?status=upcoming", {
-    refreshInterval: 60_000,
-  });
-  const allMatches = data?.matches ?? [];
-  const displayCount = 6;
-  const hasOverflow = allMatches.length > displayCount;
-  const matches = allMatches.slice(0, displayCount);
+  const { data, isLoading } = useSWR<{ matches: Match[]; count: number }>(
+    "/api/matches?status=upcoming&limit=6",
+    {
+      refreshInterval: 30_000,
+    }
+  );
+  const matches = data?.matches ?? [];
+  const totalCount = data?.count ?? matches.length;
+  const hasOverflow = totalCount > matches.length;
 
   return (
     <Section title="Upcoming fixtures" subtitle="Next six games involving our nations.">
       {isLoading ? (
         <LoadingSpinner text="Loading upcoming fixtures..." />
-      ) : allMatches.length === 0 ? (
+      ) : matches.length === 0 ? (
         <p className="text-sm text-white/50">No upcoming fixtures in the next 30 days.</p>
       ) : (
         <>

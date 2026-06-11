@@ -60,7 +60,7 @@ export async function GET(
       }
     }
 
-    const cacheSeconds = detailed.status === "FINISHED" ? 3600 : 30;
+    const cacheSeconds = detailed.status === "FINISHED" ? 3600 : 15;
 
     return NextResponse.json(
       { match: detailed },

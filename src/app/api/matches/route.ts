@@ -3,7 +3,7 @@ import { fetchAllFixtures, fetchMatchDetails } from "@/lib/espn";
 import { NATIONAL_TEAMS } from "@/lib/players";
 import type { Match } from "@/types";
 
-export const revalidate = 30;
+export const revalidate = 15;
 
 const VALID_STATUSES = ["live", "upcoming", "finished"] as const;
 const MAX_DATE = new Date("2026-07-30T23:59:59Z");
@@ -15,6 +15,19 @@ export async function GET(req: Request) {
   const status = url.searchParams.get("status") ?? undefined;
   const startParam = url.searchParams.get("start");
   const endParam = url.searchParams.get("end");
+  const limitParam = url.searchParams.get("limit");
+
+  // --- Validate limit ---
+  let limit: number | undefined;
+  if (limitParam !== null) {
+    limit = parseInt(limitParam, 10);
+    if (isNaN(limit) || limit < 1) {
+      return NextResponse.json(
+        { error: `Invalid limit: "${limitParam}". Must be a positive integer.` },
+        { status: 400 }
+      );
+    }
+  }
 
   // --- Validate status ---
   if (status !== undefined && !VALID_STATUSES.includes(status as any)) {
@@ -63,8 +76,14 @@ export async function GET(req: Request) {
       );
     }
   } else {
-    end = new Date();
-    end.setDate(end.getDate() + 60);
+    // For upcoming matches, use a shorter window (30 days instead of 60).
+    if (status === "upcoming") {
+      end = new Date();
+      end.setDate(end.getDate() + 30);
+    } else {
+      end = new Date();
+      end.setDate(end.getDate() + 60);
+    }
     if (end > MAX_DATE) end = MAX_DATE;
   }
 
@@ -99,6 +118,8 @@ export async function GET(req: Request) {
       matches = matches.filter((m) => m.status === "FINISHED");
     }
 
+    const totalCount = matches.length;
+
     if (withDetails) {
       const results = await Promise.allSettled(matches.map((m) => fetchMatchDetails(m)));
       matches = results
@@ -106,8 +127,13 @@ export async function GET(req: Request) {
         .map((r) => r.value);
     }
 
+    if (limit !== undefined) {
+      matches = matches.slice(0, limit);
+    }
+
     return NextResponse.json({
-      count: matches.length,
+      count: totalCount,
+      limit: limit ?? totalCount,
       start: start.toISOString(),
       end: end.toISOString(),
       matches,

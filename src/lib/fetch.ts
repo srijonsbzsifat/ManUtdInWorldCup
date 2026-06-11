@@ -32,10 +32,10 @@ export async function fetchJson<T>(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const cacheConfig = next ?? { revalidate: 60 };
     const res = await fetch(url, {
       ...rest,
-      // Cache aggressively on the server - we revalidate based on match status.
-      next: next ?? { revalidate: 60 },
+      next: cacheConfig,
       headers: {
         Accept: "application/json",
         "User-Agent": "ManUtdWorldCup/1.0 (vercel)",

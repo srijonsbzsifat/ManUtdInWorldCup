@@ -7,7 +7,7 @@ const FOTMOB_BASE = "https://www.fotmob.com";
 /* Cache                                                                      */
 /* -------------------------------------------------------------------------- */
 
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours — finished match data never changes
 
 interface Stamped<T> { v: T; exp: number }
 
@@ -120,10 +120,14 @@ export interface FotmobMatchData {
  */
 
 async function fetchFotmobPageHtml(
-  fotmobMatchId: number
+  fotmobMatchId: number,
+  bypassCache: boolean = false
 ): Promise<string | null> {
-  const url = `${FOTMOB_BASE}/match/${fotmobMatchId}`;
+  const cacheBuster = bypassCache ? `&_=${Date.now()}` : '';
+  const url = `${FOTMOB_BASE}/match/${fotmobMatchId}${cacheBuster}`;
   const res = await fetch(url, {
+    next: bypassCache ? { revalidate: 0 } : undefined,
+    cache: bypassCache ? 'no-store' : undefined,
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -272,14 +276,15 @@ export function extractLineup(content: any): { home: { starters: FotmobLineupPla
 
 
 export async function fetchFotmobMatchData(
-  fotmobMatchId: number
+  fotmobMatchId: number,
+  bypassCache: boolean = false
 ): Promise<FotmobMatchData | null> {
-  if (cacheHas(matchDataCache, fotmobMatchId)) {
+  if (!bypassCache && cacheHas(matchDataCache, fotmobMatchId)) {
     return cacheGet(matchDataCache, fotmobMatchId) ?? null;
   }
 
   try {
-    const html = await fetchFotmobPageHtml(fotmobMatchId);
+    const html = await fetchFotmobPageHtml(fotmobMatchId, bypassCache);
     if (!html) {
       cacheSet(matchDataCache, fotmobMatchId, null);
       cacheSet(ratingsCache, fotmobMatchId, null);

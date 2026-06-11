@@ -169,11 +169,15 @@ export interface EspnSummary {
 
 export async function getMatchSummary(
   eventId: string,
-  slug: string = "fifa.world"
+  slug: string = "fifa.world",
+  isLive: boolean = false
 ): Promise<EspnSummary | null> {
   try {
     const url = `${ESPN_BASE}/${slug}/summary?event=${eventId}`;
-    return await fetchJson<EspnSummary>(url, { next: { revalidate: 30 } });
+    // For live matches, revalidate every 15 seconds so score/minute stays fresh.
+    // For finished/upcoming, 30 seconds is fine.
+    const revalidate = isLive ? 15 : 30;
+    return await fetchJson<EspnSummary>(url, { next: { revalidate } });
   } catch (err) {
     console.warn("ESPN summary fetch failed for", eventId, slug, err);
     return null;
@@ -823,7 +827,9 @@ export async function listCompetitionFixtures(
 
   let payload: any;
   try {
-    payload = await fetchJson<any>(url, { next: { revalidate: 60 }, silent4xx: true });
+    // 15s revalidate ensures live match scoreboard data (minute/score/status)
+    // stays fresh across all consumers: live page, matches listing, match detail
+    payload = await fetchJson<any>(url, { next: { revalidate: 15 }, silent4xx: true });
   } catch (err: any) {
     if (!err?.silent) console.warn("ESPN scoreboard fetch failed for", slug, err);
     return [];
@@ -902,7 +908,8 @@ export async function fetchAllFixtures(
 
 export async function fetchMatchDetails(match: Match): Promise<Match> {
   const slug = match.espnSlug ?? "fifa.friendly";
-  const summary = await getMatchSummary(match.id, slug);
+  const isLive = match.status === "IN_PLAY" || match.status === "PAUSED";
+  const summary = await getMatchSummary(match.id, slug, isLive);
   if (summary) {
     const detailed = summaryToMatch(summary, {
       slug,
@@ -925,7 +932,8 @@ export async function fetchMatchDetails(match: Match): Promise<Match> {
             enriched.away.name
           );
           if (fotmobId) {
-            const fotmobData = await fetchFotmobMatchData(fotmobId);
+            // For live matches, bypass the FotMob cache to get fresh ratings/positions.
+            const fotmobData = await fetchFotmobMatchData(fotmobId, isLive);
             if (fotmobData) {
               if (fotmobData.ratings) {
                 enriched.lineups = {

@@ -12,7 +12,7 @@ export default function MatchPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const { data, error, isLoading } = useSWR<{ match: Match }>(
     `/api/matches/${id}`,
-    { refreshInterval: (d) => d?.match?.status === "FINISHED" ? 0 : 20_000 }
+    { refreshInterval: (d) => d?.match?.status === "FINISHED" ? 0 : 15_000 }
   );
 
   if (isLoading) {

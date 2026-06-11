@@ -11,17 +11,24 @@ export const revalidate = 30;
 export async function GET() {
   try {
     const today = new Date();
+    // Only past matches contribute stats — no need to fetch future fixtures.
     const start = new Date(today);
     start.setDate(start.getDate() - 30);
     const end = new Date(today);
-    end.setDate(end.getDate() + 30);
 
     const fixtures = await getCachedFixtures({ start, end });
     const nationCodes = new Set(NATIONAL_TEAMS.map((t) => t.code));
     const relevant = fixtures.filter(
       (m) => nationCodes.has(m.home.code) || nationCodes.has(m.away.code)
     );
-    const results = await Promise.allSettled(relevant.map((m) => fetchMatchDetails(m)));
+
+    // Only fetch details for matches that can actually contribute stats:
+    // SCHEDULED/TIMED matches have no lineups yet, so skip them entirely.
+    const analysable = relevant.filter(
+      (m) => m.status === "FINISHED" || m.status === "IN_PLAY" || m.status === "PAUSED"
+    );
+
+    const results = await Promise.allSettled(analysable.map((m) => fetchMatchDetails(m)));
     const failed = results.filter((r) => r.status === "rejected").length;
     if (failed > 0) console.warn(`stats: ${failed}/${results.length} match detail fetches failed`);
     const detailed = results
@@ -34,7 +41,7 @@ export async function GET() {
       topScorers: topPerformers(stats, "goals", 5),
       topRated: topPerformers(stats, "averageRating", 5),
       matchesAnalysed: detailed.filter((m) => m.lineups).length,
-      totalFixtures: relevant.length,
+      totalFixtures: analysable.length,
     });
   } catch (err) {
     console.error("stats failed", err);

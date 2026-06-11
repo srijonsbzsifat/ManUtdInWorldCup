@@ -596,6 +596,7 @@ function SubPlayerRow({
                         player.isUnitedPlayer ? "text-amber-300" : "text-white/90"
                     )}>
                         {player.name}
+                        {player.motm && <span className="text-amber-400 ml-0.5">★</span>}
                     </span>
                 </div>
                 <div className="text-[10px] text-white/35 mt-0.5">{getPositionLabel(player.position)}</div>

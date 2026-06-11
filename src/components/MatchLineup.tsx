@@ -152,6 +152,7 @@ function PlayerLine({ player, events, subMarker }: PlayerLineProps) {
             </div>
             <div className="flex-1 font-medium">
                 {player.name}
+                {player.motm && !player.starter && <span className="text-amber-400 ml-0.5 text-xs">★</span>}
                 <span className="ml-1 text-xs text-gray-500">{player.position}</span>
             </div>
             <div className="flex items-center text-xs text-gray-500">

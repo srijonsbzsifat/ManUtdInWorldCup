@@ -47,7 +47,6 @@ export function PlayerAvatar({
             height={size}
             loading="lazy"
             referrerPolicy="no-referrer"
-            unoptimized
             onError={() => setErrored(true)}
             className="w-full h-full object-cover"
           />

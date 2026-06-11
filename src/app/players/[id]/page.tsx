@@ -4,7 +4,7 @@ import { RatingBadge } from "@/components/RatingBadge";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { NationFlag } from "@/components/NationFlag";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { MatchCard } from "@/components/MatchCard";
+import MatchCard from "@/components/MatchCard";
 import type {
   UnitedPlayer,
   PlayerMatchPerformance,

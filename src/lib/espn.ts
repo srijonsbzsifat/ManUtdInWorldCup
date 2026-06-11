@@ -890,6 +890,24 @@ function formatDate(d: Date): string {
  */
 const competitionFailureCache = new Map<string, number>();
 const COMPETITION_FAILURE_TTL_MS = 5 * 60 * 1000; // 5 min
+const COMPETITION_FAILURE_MAX_SIZE = 20;
+
+/** Evict stale entries and enforce max size. */
+function evictCompetitionFailureCache(): void {
+  const now = Date.now();
+  for (const [key, expiry] of competitionFailureCache.entries()) {
+    if (now >= expiry) competitionFailureCache.delete(key);
+  }
+  if (competitionFailureCache.size > COMPETITION_FAILURE_MAX_SIZE) {
+    const toDelete = competitionFailureCache.size - COMPETITION_FAILURE_MAX_SIZE;
+    let i = 0;
+    for (const key of competitionFailureCache.keys()) {
+      if (i >= toDelete) break;
+      competitionFailureCache.delete(key);
+      i++;
+    }
+  }
+}
 
 /**
  * Wrap a competition fixture fetch with a per-competition timeout so that
@@ -901,6 +919,9 @@ const COMPETITION_FAILURE_TTL_MS = 5 * 60 * 1000; // 5 min
  * so that Promise.allSettled in fetchAllFixtures doesn't get stuck on one
  * sluggish endpoint.
  */
+// Clean failure cache periodically
+evictCompetitionFailureCache();
+
 async function fetchCompetitionWithTimeout(
   slug: string,
   matchType: Match["matchType"],
@@ -951,6 +972,9 @@ export interface FetchFixturesOptions {
 export async function fetchAllFixtures(
   options: FetchFixturesOptions = {}
 ): Promise<Match[]> {
+  // Clean failure cache periodically
+  evictCompetitionFailureCache();
+
   const all: Match[] = [];
   const seen = new Set<string>();
   const settled = await Promise.allSettled(

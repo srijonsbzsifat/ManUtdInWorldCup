@@ -10,6 +10,7 @@ const FOTMOB_BASE = "https://www.fotmob.com";
 // Finished match data (ratings, lineups) never changes after the match ends.
 // Use a 24-hour TTL so users revisiting a match within a day don't re-fetch.
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_CACHE_SIZE = 200; // per-map max entries to prevent memory leaks
 
 interface Stamped<T> { v: T; exp: number }
 
@@ -33,6 +34,29 @@ function cacheGet<K, V>(map: Map<K, Stamped<V>>, key: K): V | undefined {
 }
 function cacheSet<K, V>(map: Map<K, Stamped<V>>, key: K, value: V): void {
   map.set(key, { v: value, exp: Date.now() + CACHE_TTL_MS });
+  enforceMaxSize(map);
+}
+
+/**
+ * Prevent unbounded memory growth across all FotMob caches.
+ * Evicts stale entries first, then enforces per-map max size.
+ */
+function enforceMaxSize<K, V>(map: Map<K, Stamped<V>>): void {
+  // Evict stale entries
+  const now = Date.now();
+  for (const [k, entry] of map.entries()) {
+    if (now >= entry.exp) map.delete(k);
+  }
+  // Enforce max size (oldest entries first)
+  if (map.size > MAX_CACHE_SIZE) {
+    const toDelete = map.size - MAX_CACHE_SIZE;
+    let i = 0;
+    for (const k of map.keys()) {
+      if (i >= toDelete) break;
+      map.delete(k);
+      i++;
+    }
+  }
 }
 
 function matchCacheKey(date: string, home: string, away: string): string {

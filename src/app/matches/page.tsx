@@ -2,7 +2,7 @@
 import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { MatchCard } from "@/components/MatchCard";
+import MatchCard from "@/components/MatchCard";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { Select } from "@/components/Select";
 import type { Match } from "@/types";

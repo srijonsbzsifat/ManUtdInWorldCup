@@ -7,7 +7,6 @@ const NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/players", label: "Players" },
   { href: "/matches", label: "Matches" },
-  { href: "/groups", label: "Groups" },
   { href: "/news", label: "News" },
   { href: "/live", label: "Live" },
 ];
@@ -39,8 +38,8 @@ export function Header() {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${active
-                    ? "bg-white/10 text-white"
-                    : "text-white/60 hover:text-white hover:bg-white/5"
+                  ? "bg-white/10 text-white"
+                  : "text-white/60 hover:text-white hover:bg-white/5"
                   }`}
               >
                 {item.label}

@@ -1,6 +1,6 @@
 "use client";
 import useSWR from "swr";
-import { MatchCard } from "@/components/MatchCard";
+import MatchCard from "@/components/MatchCard";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import type { Match } from "@/types";
 

@@ -5,8 +5,9 @@ import { NationFlag } from "./NationFlag";
 import { formatDate, formatTimeLocal } from "@/lib/utils";
 import type { Match, LineupPlayer } from "@/types";
 import { findUnitedPlayersInLineup } from "@/lib/aggregator";
+import React from "react";
 
-export function MatchCard({ match, compact = false }: { match: Match; compact?: boolean }) {
+function MatchCard({ match, compact = false }: { match: Match; compact?: boolean }) {
   const homeHasUnitedPlayer = match.lineups
     ? findUnitedPlayersInLineup(match.lineups.home).length > 0
     : false;
@@ -160,3 +161,5 @@ function PlayerChip({ player }: { player: LineupPlayer }) {
     </div>
   );
 }
+
+export default React.memo(MatchCard);

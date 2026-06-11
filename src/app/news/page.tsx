@@ -91,7 +91,6 @@ function NewsCard({ item }: { item: NewsItem }) {
               alt={item.playerName}
               width={40}
               height={40}
-              unoptimized
               className="w-full h-full object-cover"
             />
           ) : (

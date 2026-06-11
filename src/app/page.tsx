@@ -3,7 +3,7 @@ import { LiveTicker } from "@/components/LiveTicker";
 import { StatsLeaderboard } from "@/components/StatsLeaderboard";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { UNITED_PLAYERS } from "@/lib/players";
-import { MatchCard } from "@/components/MatchCard";
+import MatchCard from "@/components/MatchCard";
 import useSWR from "swr";
 import type { Match } from "@/types";
 import Link from "next/link";

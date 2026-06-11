@@ -1,7 +1,7 @@
 // Generic fetch helpers used by the data source adapters.
 // Centralising fetch makes it easy to add caching, retries, logging etc.
 
-const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 export class FetchError extends Error {
   status: number;

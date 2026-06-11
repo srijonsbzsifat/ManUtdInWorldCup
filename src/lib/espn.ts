@@ -880,6 +880,64 @@ function formatDate(d: Date): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Per-competition timeout wrapper & failure cache                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * If a competition slug fails to fetch (e.g. CAF times out), we cache the
+ * failure so we skip it for a while instead of hanging on every request.
+ * Keyed by slug, value is the timestamp until which we should skip it.
+ */
+const competitionFailureCache = new Map<string, number>();
+const COMPETITION_FAILURE_TTL_MS = 5 * 60 * 1000; // 5 min
+
+/**
+ * Wrap a competition fixture fetch with a per-competition timeout so that
+ * one slow ESPN endpoint (e.g. CAF African qualifiers) cannot block the
+ * entire fixtures response for more than a few seconds.
+ *
+ * Since listCompetitionFixtures already uses fetchJson with its own timeout,
+ * this is an additional safety net: we race the real fetch against a timeout
+ * so that Promise.allSettled in fetchAllFixtures doesn't get stuck on one
+ * sluggish endpoint.
+ */
+async function fetchCompetitionWithTimeout(
+  slug: string,
+  matchType: Match["matchType"],
+  name: string,
+  dateRange?: { start: Date; end: Date },
+  timeoutMs: number = 7_000
+): Promise<Match[]> {
+  // Skip if this competition is in the failure cache and hasn't expired
+  const failureUntil = competitionFailureCache.get(slug);
+  if (failureUntil && Date.now() < failureUntil) {
+    console.warn(`espn: skipping known-failing competition slug "${slug}" (failure cache)`);
+    return [];
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const result = await Promise.race([
+      listCompetitionFixtures(slug, matchType, name, dateRange),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`Timeout: "${slug}" exceeded ${timeoutMs}ms`)),
+          timeoutMs
+        );
+      }),
+    ]);
+    return result;
+  } catch (err: any) {
+    console.warn(`espn: competition "${slug}" failed or timed out — skipping`, err?.message ?? err);
+    // Cache the failure so subsequent requests skip it for a while
+    competitionFailureCache.set(slug, Date.now() + COMPETITION_FAILURE_TTL_MS);
+    return [];
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Aggregator: returns all fixtures for the competitions we care about        */
 /* -------------------------------------------------------------------------- */
 
@@ -897,7 +955,7 @@ export async function fetchAllFixtures(
   const seen = new Set<string>();
   const settled = await Promise.allSettled(
     COMPETITION_SLUGS.map((c) =>
-      listCompetitionFixtures(c.slug, c.matchType, c.name, options.dateRange)
+      fetchCompetitionWithTimeout(c.slug, c.matchType, c.name, options.dateRange)
     )
   );
   for (const result of settled) {

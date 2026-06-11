@@ -1,7 +1,7 @@
 import { fetchAllFixtures } from "@/lib/espn";
 import type { Match } from "@/types";
 
-const FIXTURE_CACHE_TTL_MS = 5 * 60 * 1000;
+const FIXTURE_CACHE_TTL_MS = 2 * 60 * 1000;
 
 interface FixtureCacheEntry {
     expiresAt: number;

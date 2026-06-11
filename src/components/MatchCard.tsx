@@ -5,7 +5,6 @@ import { NationFlag } from "./NationFlag";
 import { formatDate, formatTimeLocal } from "@/lib/utils";
 import type { Match, LineupPlayer } from "@/types";
 import { findUnitedPlayersInLineup } from "@/lib/aggregator";
-import { flagFallbackLabel } from "@/lib/flags";
 
 export function MatchCard({ match, compact = false }: { match: Match; compact?: boolean }) {
   const homeHasUnitedPlayer = match.lineups
@@ -149,10 +148,10 @@ function PlayerChip({ player }: { player: LineupPlayer }) {
       {player.rating !== null && player.rating !== undefined && (
         <span
           className={`text-[10px] font-bold px-1.5 rounded ${player.rating >= 7
-              ? "bg-emerald-500/30 text-emerald-300"
-              : player.rating >= 6
-                ? "bg-yellow-500/30 text-yellow-300"
-                : "bg-red-500/30 text-red-300"
+            ? "bg-emerald-500/30 text-emerald-300"
+            : player.rating >= 6
+              ? "bg-yellow-500/30 text-yellow-300"
+              : "bg-red-500/30 text-red-300"
             }`}
         >
           {player.rating.toFixed(1)}

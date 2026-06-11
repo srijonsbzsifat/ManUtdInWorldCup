@@ -1,4 +1,5 @@
 import { UNITED_PLAYERS } from "./players";
+import { runWithConcurrencyLimit } from "./utils";
 
 export interface NewsItem {
   playerId: string;
@@ -98,35 +99,6 @@ async function fetchNewsForPlayer(p: (typeof UNITED_PLAYERS)[number]): Promise<N
   } finally {
     clearTimeout(timeout);
   }
-}
-
-/**
- * Run async tasks with a concurrency limit.
- * Preserves Promise.allSettled behaviour - failures are collected, not thrown.
- */
-async function runWithConcurrencyLimit<T, R>(
-  items: T[],
-  fn: (item: T) => Promise<R>,
-  concurrency: number
-): Promise<PromiseSettledResult<R>[]> {
-  const results: PromiseSettledResult<R>[] = new Array(items.length);
-  let index = 0;
-
-  async function worker(): Promise<void> {
-    while (index < items.length) {
-      const i = index++;
-      try {
-        const value = await fn(items[i]);
-        results[i] = { status: "fulfilled", value };
-      } catch (reason) {
-        results[i] = { status: "rejected", reason };
-      }
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
-  await Promise.all(workers);
-  return results;
 }
 
 export async function fetchNewsForAllPlayers(): Promise<NewsItem[]> {

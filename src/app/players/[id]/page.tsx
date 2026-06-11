@@ -12,7 +12,7 @@ import type {
   Match,
 } from "@/types";
 import { useMemo } from "react";
-import { formatDate, formatTime, relativeTime, cn, ratingColor, ratingLabel } from "@/lib/utils";
+import { formatDate, cn, ratingColor } from "@/lib/utils";
 import Link from "next/link";
 
 interface PlayerResponse {

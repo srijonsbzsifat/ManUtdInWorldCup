@@ -42,7 +42,7 @@ export function LiveTicker() {
       </div>
 
       {isLoading && (
-        <LoadingSpinner text={hasLiveMatches ? "Checking for live action..." : "Loading upcoming fixtures..."} />
+        <LoadingSpinner text={hasLiveMatches ? "Checking for live action..." : "Checking for live action..."} />
       )}
 
       {error && (

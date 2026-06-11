@@ -62,23 +62,6 @@ export async function GET(
 
     const cacheSeconds = detailed.status === "FINISHED" ? 3600 : 30;
 
-    // Log final lineup positions
-    if (detailed.lineups) {
-      console.log("[API] FINAL lineup positions for match", detailed.id, detailed.home.name, "vs", detailed.away.name);
-      console.log("[API] formation:", detailed.formation);
-      const logTeam = (side: "home" | "away") => {
-        const players = detailed.lineups![side];
-        console.log("[API] " + side + " starters positions:",
-          players.filter(p => p.starter).map(p => p.name + ":" + p.position).join(", ")
-        );
-        console.log("[API] " + side + " subs positions:",
-          players.filter(p => !p.starter).map(p => p.name + ":" + p.position + "(subOn=" + p.subOnMinute + ")").join(", ")
-        );
-      };
-      logTeam("home");
-      logTeam("away");
-    }
-
     return NextResponse.json(
       { match: detailed },
       { headers: { "Cache-Control": `s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 2}` } }

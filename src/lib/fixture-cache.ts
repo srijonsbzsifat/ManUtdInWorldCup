@@ -31,9 +31,3 @@ export async function getCachedFixtures(dateRange: { start: Date; end: Date }): 
     return fixtures;
 }
 
-/**
- * Clear the fixture cache.
- */
-export function clearFixtureCache(): void {
-    fixtureCache.clear();
-}

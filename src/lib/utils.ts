@@ -23,22 +23,8 @@ export function formatTime(iso: string): string {
   }).format(new Date(iso));
 }
 
-export function formatDateTime(iso: string): string {
-  return `${formatDate(iso)} ${formatTime(iso)}`;
-}
-
 export function formatTimeLocal(iso: string): string {
   return new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).format(new Date(iso));
-}
-
-export function formatDateTimeLocal(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    month: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -76,4 +62,51 @@ export function ratingLabel(rating: number | null | undefined): string {
   if (rating >= 6.0) return "Average";
   if (rating >= 5.0) return "Below par";
   return "Poor";
+}
+
+/**
+ * Run async tasks with a concurrency limit.
+ * Preserves Promise.allSettled behaviour - failures are collected, not thrown.
+ */
+export async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let index = 0;
+
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const i = index++;
+      try {
+        const value = await fn(items[i]);
+        results[i] = { status: "fulfilled", value };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+/** Map a match event type to its display icon. */
+export function eventIcon(type: string): string {
+  switch (type) {
+    case "goal": return "⚽";
+    case "penalty_scored": return "⚽";
+    case "own_goal": return "🔴";
+    case "yellow_card": return "🟨";
+    case "red_card": return "🟥";
+    case "penalty_saved": return "🧤";
+    case "penalty_missed": return "❌";
+    case "substitution": return "🔁";
+    case "kickoff": return "▶";
+    case "half_time": return "⏸";
+    case "full_time": return "⏹";
+    default: return "•";
+  }
 }

@@ -62,10 +62,3 @@ export async function fetchJson<T>(
   }
 }
 
-/** True if the match is in a live state that warrants more frequent polling. */
-export function isLive(status: string | undefined): boolean {
-  if (!status) return false;
-  return ["IN_PLAY", "PAUSED", "HALFTIME", "LIVE"].some((s) =>
-    status.toUpperCase().includes(s)
-  );
-}

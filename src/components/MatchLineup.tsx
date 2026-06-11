@@ -1,6 +1,6 @@
 import type { LineupPlayer, MatchEvent, MatchTeam, Match } from '@/types';
 import { PitchView } from './PitchView';
-import { cn } from '@/lib/utils';
+import { cn, eventIcon } from '@/lib/utils';
 
 interface MatchLineupProps {
     match: Match;
@@ -136,7 +136,7 @@ interface PlayerLineProps {
 function PlayerLine({ player, events, subMarker }: PlayerLineProps) {
     const getEventIcons = () => {
         return events.map((event, idx) => {
-            const icon = getEventIcon(event.type);
+            const icon = eventIcon(event.type);
             return icon ? (
                 <span key={idx} className="inline-block ml-1" title={`${event.type} ${event.minute}'`}>
                     {icon}
@@ -162,16 +162,3 @@ function PlayerLine({ player, events, subMarker }: PlayerLineProps) {
     );
 }
 
-function getEventIcon(type: string): string {
-    switch (type) {
-        case 'goal': return '⚽';
-        case 'penalty_scored': return '⚽ (P)';
-        case 'own_goal': return '⚽ (OG)';
-        case 'yellow_card': return '🟨';
-        case 'red_card': return '🟥';
-        case 'penalty_saved': return '🧤';
-        case 'penalty_missed': return '❌';
-        case 'substitution': return '⇄';
-        default: return '';
-    }
-}

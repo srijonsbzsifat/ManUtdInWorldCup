@@ -6,7 +6,7 @@ import { StatusPill } from "@/components/StatusPill";
 import { MatchLineup } from "@/components/MatchLineup";
 import { NationFlag } from "@/components/NationFlag";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { cn, formatDate, formatTimeLocal } from "@/lib/utils";
+import { cn, eventIcon, formatDate, formatTimeLocal } from "@/lib/utils";
 
 export default function MatchPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -254,28 +254,12 @@ function EventColumn({ teamName, teamColor, events, align }: { teamName: string;
 }
 
 function EventRow({ event, align }: { event: MatchEvent; align: "left" | "right" }) {
-  const icon = (() => {
-    switch (event.type) {
-      case "goal": return "⚽";
-      case "own_goal": return "🔴";
-      case "penalty_scored": return "⚽";
-      case "penalty_missed": return "❌";
-      case "penalty_saved": return "🧤";
-      case "yellow_card": return "🟨";
-      case "red_card": return "🟥";
-      case "substitution": return "🔁";
-      case "kickoff": return "▶";
-      case "half_time": return "⏸";
-      case "full_time": return "⏹";
-      default: return "•";
-    }
-  })();
   return (
     <div className="flex items-center gap-3 text-sm">
       <div className="w-10 text-center text-xs text-white/40 tabular-nums font-mono flex-shrink-0">
         {event.minute}{event.stoppage ? `+${event.stoppage}` : ""}&apos;
       </div>
-      <div className="text-lg w-6 text-center flex-shrink-0" aria-hidden="true">{icon}</div>
+      <div className="text-lg w-6 text-center flex-shrink-0" aria-hidden="true">{eventIcon(event.type)}</div>
       <div className="flex-1 min-w-0">
         {event.type === "goal" || event.type === "penalty_scored" ? (
           <>

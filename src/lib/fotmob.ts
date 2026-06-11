@@ -219,103 +219,55 @@ function extractFormation(content: any): { home: string | null; away: string | n
   return null;
 }
 
+function mapFotmobPlayer(p: any, includeLayout: boolean): FotmobLineupPlayer {
+  const base: FotmobLineupPlayer = {
+    id: p.id ?? 0,
+    name: p.name ?? '',
+    positionId: p.positionId,
+    usualPlayingPositionId: p.usualPlayingPositionId,
+    isCaptain: p.isCaptain === true,
+    performance: p.performance ? { rating: p.performance?.rating ?? null } : undefined,
+  };
+  if (includeLayout) {
+    if (p.horizontalLayout) {
+      base.horizontalLayout = {
+        x: p.horizontalLayout.x,
+        y: p.horizontalLayout.y,
+        width: p.horizontalLayout.width,
+        height: p.horizontalLayout.height,
+      };
+    }
+    if (p.verticalLayout) {
+      base.verticalLayout = {
+        x: p.verticalLayout.x,
+        y: p.verticalLayout.y,
+        width: p.verticalLayout.width,
+        height: p.verticalLayout.height,
+      };
+    }
+  }
+  return base;
+}
+
+function extractTeamLineup(team: any): { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null {
+  if (!team) return null;
+  const starters = Array.isArray(team.starters) ? team.starters : [];
+  const subs = Array.isArray(team.subs) ? team.subs : [];
+  return {
+    starters: starters.map((p: any) => mapFotmobPlayer(p, true)),
+    subs: subs.map((p: any) => mapFotmobPlayer(p, false)),
+  };
+}
+
 export function extractLineup(content: any): { home: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null; away: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null } | null {
   const lineup = content?.lineup;
   if (!lineup) return null;
+  if (!lineup.homeTeam || !lineup.awayTeam) return null;
 
-  const homeTeam = lineup.homeTeam;
-  const awayTeam = lineup.awayTeam;
-
-  if (!homeTeam || !awayTeam) return null;
-
-  const result: { home: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null; away: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null } = {
-    home: null,
-    away: null
+  return {
+    home: extractTeamLineup(lineup.homeTeam),
+    away: extractTeamLineup(lineup.awayTeam),
   };
-
-  // Extract home team lineup
-  if (homeTeam) {
-    const homeStarters = Array.isArray(homeTeam.starters) ? homeTeam.starters : [];
-    const homeSubs = Array.isArray(homeTeam.subs) ? homeTeam.subs : [];
-
-    result.home = {
-      starters: homeStarters.map((p: any) => ({
-        id: p.id ?? 0,
-        name: p.name ?? '',
-        positionId: p.positionId,
-        usualPlayingPositionId: p.usualPlayingPositionId,
-        isCaptain: p.isCaptain === true,
-        horizontalLayout: p.horizontalLayout ? {
-          x: p.horizontalLayout.x,
-          y: p.horizontalLayout.y,
-          width: p.horizontalLayout.width,
-          height: p.horizontalLayout.height
-        } : undefined,
-        verticalLayout: p.verticalLayout ? {
-          x: p.verticalLayout.x,
-          y: p.verticalLayout.y,
-          width: p.verticalLayout.width,
-          height: p.verticalLayout.height
-        } : undefined,
-        performance: p.performance ? {
-          rating: p.performance?.rating ?? null
-        } : undefined
-      })),
-      subs: homeSubs.map((p: any) => ({
-        id: p.id ?? 0,
-        name: p.name ?? '',
-        positionId: p.positionId,
-        usualPlayingPositionId: p.usualPlayingPositionId,
-        isCaptain: p.isCaptain === true,
-        performance: p.performance ? {
-          rating: p.performance?.rating ?? null
-        } : undefined
-      }))
-    };
-  }
-
-  // Extract away team lineup
-  if (awayTeam) {
-    const awayStarters = Array.isArray(awayTeam.starters) ? awayTeam.starters : [];
-    const awaySubs = Array.isArray(awayTeam.subs) ? awayTeam.subs : [];
-
-    result.away = {
-      starters: awayStarters.map((p: any) => ({
-        id: p.id ?? 0,
-        name: p.name ?? '',
-        positionId: p.positionId,
-        usualPlayingPositionId: p.usualPlayingPositionId,
-        isCaptain: p.isCaptain === true,
-        horizontalLayout: p.horizontalLayout ? {
-          x: p.horizontalLayout.x,
-          y: p.horizontalLayout.y,
-          width: p.horizontalLayout.width,
-          height: p.horizontalLayout.height
-        } : undefined,
-        verticalLayout: p.verticalLayout ? {
-          x: p.verticalLayout.x,
-          y: p.verticalLayout.y,
-          width: p.verticalLayout.width,
-          height: p.verticalLayout.height
-        } : undefined,
-        performance: p.performance ? {
-          rating: p.performance?.rating ?? null
-        } : undefined
-      })),
-      subs: awaySubs.map((p: any) => ({
-        id: p.id ?? 0,
-        name: p.name ?? '',
-        positionId: p.positionId,
-        usualPlayingPositionId: p.usualPlayingPositionId,
-        isCaptain: p.isCaptain === true,
-        performance: p.performance ? {
-          rating: p.performance?.rating ?? null
-        } : undefined
-      }))
-    };
-  }
-
-  return result;
 }
 
 
@@ -346,41 +298,6 @@ export async function fetchFotmobMatchData(
     const lineupExtracted = extractLineup(content);
     const formationExtracted = extractFormation(content);
 
-    // Dump raw FotMob content to see player object structure
-    try {
-      const rawLineup = content?.lineup;
-      if (rawLineup?.homeTeam?.starters?.[0]) {
-        const s0 = rawLineup.homeTeam.starters[0];
-        console.log("[FOTMOB] RAW FotMob home starter[0] ALL keys:", Object.keys(s0));
-        console.log("[FOTMOB] RAW FotMob home starter[0] full:", JSON.stringify(s0, null, 2));
-        // Check 3 starters for any position-like field
-        for (let i = 0; i < Math.min(3, rawLineup.homeTeam.starters.length); i++) {
-          const s = rawLineup.homeTeam.starters[i];
-          console.log("[FOTMOB] RAW starter[" + i + "]: name=" + s.name, "position=" + s.position, "role=" + s.role, "type=" + s.type, "pos=" + s.pos,
-            "has position field:", "position" in s,
-            "all fields:", Object.keys(s).join(","));
-        }
-      }
-    } catch (e) {
-      console.log("[FOTMOB] RAW dump error:", e);
-    }
-
-    console.log("[FOTMOB] fetchFotmobMatchData id=" + fotmobMatchId, {
-      hasRatings: !!extractRatings(content),
-      hasMotm: !!extractMotm(content),
-      hasFormation: !!formationExtracted,
-      formation: formationExtracted,
-      hasLineup: !!lineupExtracted,
-      lineupStats: lineupExtracted ? {
-        homeStarters: lineupExtracted.home?.starters?.length ?? 0,
-        homeSubs: lineupExtracted.home?.subs?.length ?? 0,
-        awayStarters: lineupExtracted.away?.starters?.length ?? 0,
-        awaySubs: lineupExtracted.away?.subs?.length ?? 0,
-        homeSamplePos: lineupExtracted.home?.starters?.slice(0, 3).map((p: any) => p.position),
-        awaySamplePos: lineupExtracted.away?.starters?.slice(0, 3).map((p: any) => p.position),
-      } : null,
-    });
-
     const result = {
       ratings: extractRatings(content),
       motm: extractMotm(content),
@@ -397,43 +314,6 @@ export async function fetchFotmobMatchData(
     cacheSet(motmCache, fotmobMatchId, null);
     return null;
   }
-}
-
-/**
- * Fetch FotMob match page HTML, extract __NEXT_DATA__, and return a map of
- * player name → rating for all players who appeared in the match.
- *
- * The match page URL format is /matches/<slug>/<hash>.  /match/<id> redirects
- * there (308), which Node's fetch follows automatically.
- */
-export async function fetchFotmobLineupRatings(
-  fotmobMatchId: number
-): Promise<Record<string, number> | null> {
-  if (cacheHas(ratingsCache, fotmobMatchId)) {
-    return cacheGet(ratingsCache, fotmobMatchId) ?? null;
-  }
-
-  const data = await fetchFotmobMatchData(fotmobMatchId);
-  return data?.ratings ?? null;
-}
-
-/* -------------------------------------------------------------------------- */
-/* MOTM scraper                                                               */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Fetch FotMob MOTM info from the match page's __NEXT_DATA__.
- * Returns the MOTM name and team name, or null.
- */
-export async function fetchFotmobMotm(
-  fotmobMatchId: number
-): Promise<{ name: string; teamName: string } | null> {
-  if (cacheHas(motmCache, fotmobMatchId)) {
-    return cacheGet(motmCache, fotmobMatchId) ?? null;
-  }
-
-  const data = await fetchFotmobMatchData(fotmobMatchId);
-  return data?.motm ?? null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -595,11 +475,8 @@ export function applyFotmobPositions(
   fotmobLineup: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null | undefined,
   formation?: string | null
 ): LineupPlayer[] {
-  console.log("[FOTMOB] applyFotmobPositions called, formation:", formation);
-
   const lineupForStats = espnLineup;
 
-  // Use positionId + verticalLayout.x for starters; usualPlayingPositionId for subs
   if (fotmobLineup?.starters) {
     const startersMap = new Map(
       fotmobLineup.starters.map((p) => [normaliseName(p.name), p])
@@ -607,7 +484,6 @@ export function applyFotmobPositions(
     const subsMap = new Map(
       (fotmobLineup.subs ?? []).map((p) => [normaliseName(p.name), p])
     );
-    // usualPlayingPositionId: 0=GK 1=DEF 2=MID 3=FW
     const usualPosMap: Record<number, PlayerPosition> = { 0: 'GK', 1: 'DF', 2: 'MF', 3: 'FW' };
 
     const result = espnLineup.map((p) => {
@@ -616,11 +492,9 @@ export function applyFotmobPositions(
         if (fm) {
           const verticalX = fm.verticalLayout?.x ?? 0.5;
           const finalPos = getFotmobPosition(fm.positionId, verticalX) ?? p.position;
-          console.log(`[FOTMOB] mapping for ${p.name}: ${p.position} → ${finalPos} (positionId=${fm.positionId}, verticalX=${verticalX}, captain=${fm.isCaptain})`);
           return { ...p, position: finalPos, captain: fm.isCaptain === true || p.captain };
         }
       } else {
-        // Sub: derive broad position from FotMob's usualPlayingPositionId; also apply captain
         const fm = subsMap.get(normaliseName(p.name));
         if (fm) {
           const captain = fm.isCaptain === true || p.captain;
@@ -637,9 +511,7 @@ export function applyFotmobPositions(
     return applyFormationRefinement(result, formation);
   }
 
-  // Only process starters with formation context
   if (!formation) {
-    console.log("[FOTMOB] no formation, skipping position override");
     return espnLineup;
   }
   return applyFormationRefinement(espnLineup, formation);
@@ -651,21 +523,17 @@ function applyFormationRefinement(
 ): LineupPlayer[] {
   const catCounts = formationCategoryCounts(formation);
   if (!catCounts) {
-    console.log("[FOTMOB] unknown formation:", formation);
     return espnLineup;
   }
 
   const lineupForStats = espnLineup;
 
-  console.log("[FOTMOB] formation", formation, "needs:", catCounts);
-
-  // Count specific positions per category among starters
   const starters = espnLineup.filter(p => p.starter);
   const subs = espnLineup.filter(p => !p.starter);
 
   const specCounts = { DEF: 0, MID: 0, WF: 0, FW: 0 };
-  const genericMf: LineupPlayer[] = []; // players with "MF" position
-  const genericFw: LineupPlayer[] = []; // players with "FW" position
+  const genericMf: LineupPlayer[] = [];
+  const genericFw: LineupPlayer[] = [];
 
   for (const p of starters) {
     if (isSpecificPosition(p.position)) {
@@ -680,10 +548,6 @@ function applyFormationRefinement(
     }
   }
 
-  console.log("[FOTMOB] specific position counts:", specCounts,
-    "generic MF:", genericMf.length, "generic FW:", genericFw.length);
-
-  // Calculate gaps
   const gaps = {
     DEF: Math.max(0, catCounts.DEF - specCounts.DEF),
     MID: Math.max(0, catCounts.MID - specCounts.MID),
@@ -691,9 +555,6 @@ function applyFormationRefinement(
     FW: Math.max(0, catCounts.FW - specCounts.FW),
   };
 
-  console.log("[FOTMOB] category gaps:", gaps);
-
-  // Priority order for assigning "MF" players: fill DEF first, then MID, then WF
   const fillOrder: ("DEF" | "MID" | "WF" | "FW")[] = ["DEF", "MID", "WF", "FW"];
   const mfAssignments = new Map<string, PlayerPosition>();
   let mfIdx = 0;
@@ -703,34 +564,27 @@ function applyFormationRefinement(
     while (needed > 0 && mfIdx < genericMf.length) {
       const targetPos: PlayerPosition = cat === "DEF" ? "DF" : cat === "MID" ? "MF" : cat === "WF" ? "LW" : "FW";
       mfAssignments.set(normaliseName(genericMf[mfIdx].name), targetPos);
-      console.log("[FOTMOB] assign MF:", genericMf[mfIdx].name, "→", targetPos, "(fills", cat, "gap)");
       mfIdx++;
       needed--;
     }
   }
 
-  // Any remaining MF players → default to MID
   while (mfIdx < genericMf.length) {
     mfAssignments.set(normaliseName(genericMf[mfIdx].name), "CM");
-    console.log("[FOTMOB] assign remaining MF:", genericMf[mfIdx].name, "→ CM (overflow)");
     mfIdx++;
   }
 
-  // Assign "FW" players: fill FW gap first, then WF
   const fwAssignments = new Map<string, PlayerPosition>();
   let fwGapNeeded = gaps.FW;
   for (const p of genericFw) {
     if (fwGapNeeded > 0) {
       fwAssignments.set(normaliseName(p.name), "ST");
-      console.log("[FOTMOB] assign FW:", p.name, "→ ST (fills FW gap)");
       fwGapNeeded--;
     } else {
       fwAssignments.set(normaliseName(p.name), "LW");
-      console.log("[FOTMOB] assign FW:", p.name, "→ LW (WF overflow)");
     }
   }
 
-  // Apply assignments
   let applied = 0;
   const result = espnLineup.map((p) => {
     const key = normaliseName(p.name);
@@ -746,14 +600,6 @@ function applyFormationRefinement(
     }
     return p;
   });
-
-  const changed = result.filter((p, i) => p.position !== lineupForStats[i]?.position);
-  console.log("[FOTMOB] applied to", applied, "players");
-  if (changed.length > 0) {
-    console.log("[FOTMOB] changes:",
-      changed.map(p => p.name + ": " + (espnLineup.find(e => e.id === p.id)?.position ?? "?") + "->" + p.position).join(", ")
-    );
-  }
 
   return result;
 }

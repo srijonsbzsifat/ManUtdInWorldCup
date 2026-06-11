@@ -10,7 +10,7 @@ import type {
   PlayerPosition,
 } from "@/types";
 import { matchUnitedPlayer, normaliseName } from "@/lib/players";
-import { fetchFotmobMatchData, fetchFotmobMatchId, applyFotmobRatings } from "@/lib/fotmob";
+import { fetchFotmobMatchData, fetchFotmobMatchId, applyFotmobRatings, applyFotmobPositions } from "@/lib/fotmob";
 
 /* -------------------------------------------------------------------------- */
 /* ESPN public API adapter                                                    */
@@ -924,14 +924,44 @@ export async function fetchMatchDetails(match: Match): Promise<Match> {
             enriched.home.name,
             enriched.away.name
           );
+          console.log("[ESPN] fotmobId lookup result:", fotmobId, "for match", enriched.home.name, "vs", enriched.away.name, "date:", enriched.kickoff);
           if (fotmobId) {
+            console.log("[ESPN] fetching fotmobMatchData for id:", fotmobId);
             const fotmobData = await fetchFotmobMatchData(fotmobId);
+            console.log("[ESPN] fotmobMatchData result:",
+              fotmobData ? {
+                hasRatings: !!fotmobData.ratings,
+                hasFormation: !!fotmobData.formation,
+                formation: fotmobData.formation,
+                hasLineup: !!fotmobData.lineup,
+                lineupHome: fotmobData.lineup?.home ? { starters: fotmobData.lineup.home.starters.length, subs: fotmobData.lineup.home.subs.length } : null,
+                lineupAway: fotmobData.lineup?.away ? { starters: fotmobData.lineup.away.starters.length, subs: fotmobData.lineup.away.subs.length } : null,
+              } : null
+            );
             if (fotmobData) {
               if (fotmobData.ratings) {
                 enriched.lineups = {
                   home: applyFotmobRatings(enriched.lineups.home, fotmobData.ratings),
                   away: applyFotmobRatings(enriched.lineups.away, fotmobData.ratings),
                 };
+              }
+              if (fotmobData.formation) {
+                console.log("[ESPN] Positions BEFORE FotMob override - home starters:",
+                  enriched.lineups.home.filter(p => p.starter).slice(0, 11).map(p => p.name + ":" + p.position).join(", ")
+                );
+                console.log("[ESPN] Positions BEFORE FotMob override - away starters:",
+                  enriched.lineups.away.filter(p => p.starter).slice(0, 11).map(p => p.name + ":" + p.position).join(", ")
+                );
+                enriched.lineups = {
+                  home: applyFotmobPositions(enriched.lineups.home, fotmobData.lineup?.home, fotmobData.formation.home),
+                  away: applyFotmobPositions(enriched.lineups.away, fotmobData.lineup?.away, fotmobData.formation.away),
+                };
+                console.log("[ESPN] Positions AFTER FotMob override - home starters:",
+                  enriched.lineups.home.filter(p => p.starter).slice(0, 11).map(p => p.name + ":" + p.position).join(", ")
+                );
+                console.log("[ESPN] Positions AFTER FotMob override - away starters:",
+                  enriched.lineups.away.filter(p => p.starter).slice(0, 11).map(p => p.name + ":" + p.position).join(", ")
+                );
               }
               if (fotmobData.formation) {
                 enriched.formation = fotmobData.formation;

@@ -1,13 +1,12 @@
 "use client";
 import useSWR from "swr";
 import Link from "next/link";
-import type { Match, LineupPlayer, MatchEvent } from "@/types";
+import type { Match, MatchEvent } from "@/types";
 import { StatusPill } from "@/components/StatusPill";
-import { RatingBadge } from "@/components/RatingBadge";
+import { MatchLineup } from "@/components/MatchLineup";
 import { NationFlag } from "@/components/NationFlag";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
-import { cn, formatDate, formatTimeLocal, ratingColor, ratingLabel } from "@/lib/utils";
-import { findUnitedPlayersInLineup } from "@/lib/aggregator";
+import { cn, formatDate, formatTimeLocal } from "@/lib/utils";
 
 export default function MatchPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -47,15 +46,10 @@ export default function MatchPage({ params }: { params: { id: string } }) {
 
       {match.events.length > 0 && <GoalScorersSummary match={match} />}
 
-      {match.lineups ? (
-        <div className="grid lg:grid-cols-2 gap-4">
-          <LineupPanel side="home" match={match} />
-          <LineupPanel side="away" match={match} />
-        </div>
-      ) : (
-        <div className="glass p-6 text-center text-sm text-white/50">
-          Lineups are not yet available. They will appear here as soon as the
-          teams are announced.
+      {match.lineups && (
+        <div className="mt-8">
+          <h2 className="text-xl font-bold mb-4">Lineup & Formation</h2>
+          <MatchLineup match={match} />
         </div>
       )}
 
@@ -154,140 +148,6 @@ function TeamDisplay({ team, align }: { team: Match["home"]; align: "left" | "ri
   );
 }
 
-function LineupPanel({ side, match }: { side: "home" | "away"; match: Match }) {
-  if (!match.lineups) return null;
-  const lineup = side === "home" ? match.lineups.home : match.lineups.away;
-  const team = side === "home" ? match.home : match.away;
-  const starters = lineup.filter((p) => p.starter);
-  const subs = lineup
-    .filter((p) => !p.starter)
-    .sort((a, b) => (a.subOnMinute ?? 999) - (b.subOnMinute ?? 999));
-  const united = findUnitedPlayersInLineup(lineup);
-
-  return (
-    <div className="glass p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-7 h-7 rounded-full overflow-hidden bg-white flex items-center justify-center"
-            style={{ background: team.color }}
-          >
-            <NationFlag
-              code={team.code}
-              shortName={team.shortName ?? team.name}
-              emoji={team.flag}
-              size={26}
-              rounded
-              title={`${team.name} flag`}
-            />
-          </div>
-          <h3 className="text-sm font-semibold">{team.name}</h3>
-          {united.length > 0 && (
-            <span className="pill bg-united-red/20 text-united-red text-[10px] font-semibold">
-              {united.length} Red Devil{united.length > 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
-        <span className="text-[10px] text-white/40">
-          {starters.length} start · {subs.length} sub
-        </span>
-      </div>
-
-      <div className="space-y-1.5">
-        {starters.map((p) => (
-          <LineupRow key={p.id} player={p} side={side} />
-        ))}
-        {subs.length > 0 && (
-          <>
-            <div className="text-[10px] uppercase tracking-wider text-white/40 mt-3 mb-1 font-semibold">
-              Substitutes
-            </div>
-            {subs.map((p) => (
-              <LineupRow key={p.id} player={p} side={side} isSub />
-            ))}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function LineupRow({
-  player,
-  side,
-  isSub,
-}: {
-  player: LineupPlayer;
-  side: "home" | "away";
-  isSub?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm",
-        player.isUnitedPlayer
-          ? "bg-united-red/10 border border-united-red/20"
-          : "hover:bg-white/5"
-      )}
-    >
-      <div className="w-7 h-7 rounded-full bg-white/10 text-white/60 text-xs font-bold flex items-center justify-center flex-shrink-0">
-        {player.shirtNumber || "•"}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className={cn("truncate text-sm", player.isUnitedPlayer && "font-semibold text-united-gold")}>
-          {player.name}
-          {player.captain && <span className="ml-1 text-[10px] text-white/40">(C)</span>}
-          {player.motm && <span className="ml-1 text-united-gold" title="Man of the match">⭐</span>}
-        </div>
-        <div className="text-[10px] text-white/40 flex items-center gap-1.5">
-          {player.position}
-          {isSub && player.subOnMinute && (
-            <span className="text-emerald-400">↑ {player.subOnMinute}&apos;</span>
-          )}
-          {!isSub && player.subOffMinute && (
-            <span className="text-amber-400">↓ {player.subOffMinute}&apos;</span>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-1.5 flex-shrink-0">
-        {(player.goals ?? 0) > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-            ⚽ {player.goals}
-          </span>
-        )}
-        {(player.assists ?? 0) > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-            🎯 {player.assists}
-          </span>
-        )}
-        {player.cleanSheet && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300" title="Clean sheet">
-            🛡
-          </span>
-        )}
-        {(player.yellowCards ?? 0) > 0 && <span className="text-[10px]">🟨</span>}
-        {(player.redCards ?? 0) > 0 && <span className="text-[10px]">🟥</span>}
-        {(player.ownGoals ?? 0) > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">
-            🔴 {player.ownGoals}
-          </span>
-        )}
-        {(player.penaltySaves ?? 0) > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300" title="Penalty saves">
-            🧤 {player.penaltySaves}
-          </span>
-        )}
-        {(player.penaltyMisses ?? 0) > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">
-            ❌ {player.penaltyMisses}
-          </span>
-        )}
-        <RatingBadge rating={player.rating} size="sm" />
-      </div>
-    </div>
-  );
-}
-
 function GoalScorersSummary({ match }: { match: Match }) {
   const scoringEvents = match.events.filter(
     e => e.type === "goal" || e.type === "penalty_scored" || e.type === "own_goal"
@@ -358,7 +218,7 @@ function EventsTimeline({ match }: { match: Match }) {
     if (a.minute !== b.minute) return a.minute - b.minute;
     return (a.stoppage ?? 0) - (b.stoppage ?? 0);
   });
-  
+
   const homeEvents = events.filter(e => e.team === "home");
   const awayEvents = events.filter(e => e.team === "away");
 
@@ -397,10 +257,10 @@ function EventRow({ event, align }: { event: MatchEvent; align: "left" | "right"
   const icon = (() => {
     switch (event.type) {
       case "goal": return "⚽";
-      case "own_goal": return "🔴"; // Red football for own goal
+      case "own_goal": return "🔴";
       case "penalty_scored": return "⚽";
       case "penalty_missed": return "❌";
-      case "penalty_saved": return "🧤"; // Goalkeeper glove for penalty save
+      case "penalty_saved": return "🧤";
       case "yellow_card": return "🟨";
       case "red_card": return "🟥";
       case "substitution": return "🔁";
@@ -462,15 +322,29 @@ function EventRow({ event, align }: { event: MatchEvent; align: "left" | "right"
               <div className="text-[10px] text-white/50 mt-0.5">{event.detail}</div>
             )}
           </>
+        ) : event.type === "yellow_card" ? (
+          <div>
+            <div className="font-semibold">{event.player?.name}</div>
+            <div className="text-[10px] text-yellow-400/80 mt-0.5">Yellow card</div>
+          </div>
+        ) : event.type === "red_card" ? (
+          <div>
+            <div className="font-semibold text-red-400">{event.player?.name}</div>
+            <div className="text-[10px] text-red-400/70 mt-0.5">Red card · Dismissed</div>
+          </div>
         ) : event.type === "substitution" ? (
-          <>
-            <div className="font-semibold">
-              {event.player?.name}
+          <div>
+            <div className="font-semibold flex items-center gap-1">
+              <span className="text-emerald-400 text-xs">↑</span>
+              <span>{event.player?.name}</span>
             </div>
             {event.detail && (
-              <div className="text-[10px] text-white/50 mt-0.5">{event.detail}</div>
+              <div className="text-[10px] text-red-400/80 mt-0.5 flex items-center gap-1">
+                <span>↓</span>
+                <span>{event.detail.startsWith("On for ") ? event.detail.slice(7) : event.detail}</span>
+              </div>
             )}
-          </>
+          </div>
         ) : (
           <div className="font-semibold">
             {event.player?.name ?? event.detail ?? event.type.replace(/_/g, " ")}

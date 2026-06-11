@@ -23,7 +23,62 @@ export async function GET(
       return NextResponse.json({ error: "Match not found" }, { status: 404 });
     }
     const detailed = await fetchMatchDetails(found);
+
+    // ESPN play-by-play rarely includes substitution data for international fixtures.
+    // Reconstruct substitution events from FotMob lineup timing instead.
+    if (detailed.lineups && !detailed.events.some(e => e.type === "substitution")) {
+      const syntheticSubs: typeof detailed.events = [];
+      for (const side of ["home", "away"] as const) {
+        const lineup = detailed.lineups[side];
+        const outByMinute = new Map<number, { id: string; name: string }[]>();
+        for (const p of lineup) {
+          if (p.starter && p.subOffMinute != null) {
+            const bucket = outByMinute.get(p.subOffMinute) ?? [];
+            bucket.push({ id: p.id, name: p.name });
+            outByMinute.set(p.subOffMinute, bucket);
+          }
+        }
+        for (const p of lineup) {
+          if (!p.starter && p.subOnMinute != null) {
+            const outList = outByMinute.get(p.subOnMinute) ?? [];
+            const outPlayer = outList.shift();
+            syntheticSubs.push({
+              id: `sub-${side}-${p.subOnMinute}-${p.id}`,
+              minute: p.subOnMinute,
+              type: "substitution",
+              team: side,
+              player: { id: p.id, name: p.name },
+              ...(outPlayer && { detail: `On for ${outPlayer.name}` }),
+            });
+          }
+        }
+      }
+      if (syntheticSubs.length > 0) {
+        detailed.events = [...detailed.events, ...syntheticSubs].sort((a, b) =>
+          a.minute !== b.minute ? a.minute - b.minute : (a.stoppage ?? 0) - (b.stoppage ?? 0)
+        );
+      }
+    }
+
     const cacheSeconds = detailed.status === "FINISHED" ? 3600 : 30;
+
+    // Log final lineup positions
+    if (detailed.lineups) {
+      console.log("[API] FINAL lineup positions for match", detailed.id, detailed.home.name, "vs", detailed.away.name);
+      console.log("[API] formation:", detailed.formation);
+      const logTeam = (side: "home" | "away") => {
+        const players = detailed.lineups![side];
+        console.log("[API] " + side + " starters positions:",
+          players.filter(p => p.starter).map(p => p.name + ":" + p.position).join(", ")
+        );
+        console.log("[API] " + side + " subs positions:",
+          players.filter(p => !p.starter).map(p => p.name + ":" + p.position + "(subOn=" + p.subOnMinute + ")").join(", ")
+        );
+      };
+      logTeam("home");
+      logTeam("away");
+    }
+
     return NextResponse.json(
       { match: detailed },
       { headers: { "Cache-Control": `s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 2}` } }

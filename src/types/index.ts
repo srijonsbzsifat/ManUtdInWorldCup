@@ -7,6 +7,8 @@ export type PlayerPosition =
   | "RB"
   | "DM"
   | "CM"
+  | "LM"
+  | "RM"
   | "AM"
   | "LW"
   | "RW"

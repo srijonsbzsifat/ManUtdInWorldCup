@@ -56,7 +56,8 @@ export function relativeTime(iso: string): string {
   return formatDate(iso);
 }
 
-export function ratingColor(rating: number | null | undefined): string {
+export function ratingColor(rating: number | null | undefined, motm?: boolean): string {
+  if (motm) return "bg-blue-500 text-white";
   if (rating === null || rating === undefined) return "bg-white/10 text-white/60";
   if (rating >= 8.0) return "bg-emerald-500 text-emerald-950";
   if (rating >= 7.0) return "bg-emerald-500/80 text-emerald-950";

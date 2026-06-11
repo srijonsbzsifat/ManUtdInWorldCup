@@ -77,8 +77,8 @@ export default function MatchesPage() {
                     : "text-white/60 hover:text-white"
                 )}
               >
-                {t === "live" && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 animate-pulse" />}
                 {t}
+                {t === "live" && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 ml-1.5 animate-pulse" />}
               </button>
             ))}
           </div>

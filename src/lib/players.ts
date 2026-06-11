@@ -1,5 +1,4 @@
 import type { UnitedPlayer } from "@/types";
-import { flagImageUrl } from "@/lib/flags";
 
 /**
  * Manchester United first-team squad (2025-26 season) and the national

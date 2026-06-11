@@ -42,10 +42,10 @@ export function LiveTicker() {
     <section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-base sm:text-lg font-semibold">
-            {hasLiveMatches ? "Live now" : "Live now"}
+          <h2 className="text-base sm:text-lg font-semibold flex items-center gap-1.5">
+            Live now
+            <span className="live-dot" />
           </h2>
-          {hasLiveMatches && <span className="live-dot" />}
         </div>
         {hasLiveMatches ? (
           <a href="/live" className="text-xs text-white/50 hover:text-white">

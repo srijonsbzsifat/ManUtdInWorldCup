@@ -34,6 +34,7 @@ export async function GET(
     );
     const detailedResults = await Promise.allSettled(
       teamMatchSlugs.map((m) =>
+        // Skip fetchMatchDetails for matches that already have lineups
         m.lineups ? Promise.resolve(m) : fetchMatchDetails(m)
       )
     );
@@ -66,6 +67,8 @@ export async function GET(
       stats: tournamentStats,
       matchesInWindow: teamMatchSlugs.length,
       nextFixtures,
+      // Debug: how many fetchMatchDetails calls were skipped
+      _detailCallSavings: teamMatchSlugs.filter((m) => m.lineups).length,
     });
   } catch (err) {
     console.error("player detail failed", err);

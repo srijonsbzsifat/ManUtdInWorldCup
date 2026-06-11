@@ -16,8 +16,8 @@ export default function LivePage() {
     <div className="space-y-6 animate-fade-in">
       <header>
         <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
-          <span className="live-dot" />
           Live now
+          <span className="live-dot" />
         </h1>
         <p className="text-sm text-white/50 mt-1">
           Auto-refreshes every 15 seconds.

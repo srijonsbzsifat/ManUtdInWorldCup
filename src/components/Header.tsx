@@ -38,13 +38,13 @@ export function Header() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  active
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${active
                     ? "bg-white/10 text-white"
                     : "text-white/60 hover:text-white hover:bg-white/5"
-                }`}
+                  }`}
               >
                 {item.label}
+                {item.label === "Live" && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 ml-1.5 animate-pulse" />}
               </Link>
             );
           })}

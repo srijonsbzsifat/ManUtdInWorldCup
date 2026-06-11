@@ -7,7 +7,9 @@ const FOTMOB_BASE = "https://www.fotmob.com";
 /* Cache                                                                      */
 /* -------------------------------------------------------------------------- */
 
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours — finished match data never changes
+// Finished match data (ratings, lineups) never changes after the match ends.
+// Use a 24-hour TTL so users revisiting a match within a day don't re-fetch.
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface Stamped<T> { v: T; exp: number }
 
@@ -15,6 +17,10 @@ const matchIdCache = new Map<string, Stamped<number | null>>();
 const ratingsCache = new Map<number, Stamped<Record<string, number> | null>>();
 const motmCache = new Map<number, Stamped<{ name: string; teamName: string } | null>>();
 const matchDataCache = new Map<number, Stamped<FotmobMatchData | null>>();
+
+/** In-memory cache keyed by YYYYMMDD → parsed FotMob matches[] for that date.
+ *  Multiple match ID lookups on the same date share one HTTP call. */
+const dateFixturesCache = new Map<string, Stamped<any[] | null>>();
 
 function cacheHas<K, V>(map: Map<K, Stamped<V>>, key: K): boolean {
   const e = map.get(key);
@@ -38,20 +44,14 @@ function matchCacheKey(date: string, home: string, away: string): string {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Find a FotMob match ID by date and team names.  Uses the
- * /api/data/matches?date=YYYYMMDD endpoint (which still works without
- * Cloudflare verification).
+ * Fetch all FotMob fixtures for a given date (batches into a single HTTP call
+ * across all callers sharing the same date).  Uses the
+ * /api/data/matches?date=YYYYMMDD endpoint.
  */
-export async function fetchFotmobMatchId(
-  dateISO: string,
-  homeTeamName: string,
-  awayTeamName
-    : string
-): Promise<number | null> {
-  const date = dateISOToYYYYMMDD(dateISO);
-  const key = matchCacheKey(date, homeTeamName, awayTeamName);
-  if (cacheHas(matchIdCache, key)) return cacheGet(matchIdCache, key) ?? null;
-
+async function fetchFotmobDateFixtures(date: string): Promise<any[]> {
+  if (cacheHas(dateFixturesCache, date)) {
+    return cacheGet(dateFixturesCache, date) ?? [];
+  }
   try {
     const url = `${FOTMOB_BASE}/api/data/matches?date=${date}`;
     const res = await fetch(url, {
@@ -60,35 +60,61 @@ export async function fetchFotmobMatchId(
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         Accept: "application/json",
       },
+      // Short TTL – the live data may change for in-play matches.
+      next: { revalidate: 120 },
     });
-    if (!res.ok) return null;
-
+    if (!res.ok) {
+      cacheSet(dateFixturesCache, date, []);
+      return [];
+    }
     const body: any = await res.json();
     const leagues: any[] = body?.leagues ?? [];
-    const homeNorm = normaliseName(homeTeamName);
-    const awayNorm = normaliseName(awayTeamName);
-
+    const allMatches: any[] = [];
     for (const league of leagues) {
       const matches: any[] = league?.matches ?? [];
-      if (!Array.isArray(matches)) continue;
-      for (const m of matches) {
-        if (!m?.home?.name || !m?.away?.name) continue;
-        const fotmobHome = normaliseName(m.home.name);
-        const fotmobAway = normaliseName(m.away.name);
-        if (fotmobHome === homeNorm && fotmobAway === awayNorm) {
-          const id = parseInt(m.id, 10);
-          if (!isNaN(id)) {
-            cacheSet(matchIdCache, key, id);
-            return id;
-          }
-        }
+      if (Array.isArray(matches)) allMatches.push(...matches);
+    }
+    cacheSet(dateFixturesCache, date, allMatches);
+    return allMatches;
+  } catch {
+    cacheSet(dateFixturesCache, date, []);
+    return [];
+  }
+}
+
+/**
+ * Find a FotMob match ID by date and team names.  Uses the
+ * /api/data/matches?date=YYYYMMDD endpoint (which still works without
+ * Cloudflare verification).  All match-ID lookups for the same date share
+ * a single HTTP request via fetchFotmobDateFixtures.
+ */
+export async function fetchFotmobMatchId(
+  dateISO: string,
+  homeTeamName: string,
+  awayTeamName: string
+): Promise<number | null> {
+  const date = dateISOToYYYYMMDD(dateISO);
+  const key = matchCacheKey(date, homeTeamName, awayTeamName);
+  if (cacheHas(matchIdCache, key)) return cacheGet(matchIdCache, key) ?? null;
+
+  const allMatches = await fetchFotmobDateFixtures(date);
+  const homeNorm = normaliseName(homeTeamName);
+  const awayNorm = normaliseName(awayTeamName);
+
+  for (const m of allMatches) {
+    if (!m?.home?.name || !m?.away?.name) continue;
+    const fotmobHome = normaliseName(m.home.name);
+    const fotmobAway = normaliseName(m.away.name);
+    if (fotmobHome === homeNorm && fotmobAway === awayNorm) {
+      const id = parseInt(m.id, 10);
+      if (!isNaN(id)) {
+        cacheSet(matchIdCache, key, id);
+        return id;
       }
     }
-    cacheSet(matchIdCache, key, null);
-    return null;
-  } catch {
-    return null;
   }
+  cacheSet(matchIdCache, key, null);
+  return null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -480,8 +506,6 @@ export function applyFotmobPositions(
   fotmobLineup: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null | undefined,
   formation?: string | null
 ): LineupPlayer[] {
-  const lineupForStats = espnLineup;
-
   if (fotmobLineup?.starters) {
     const startersMap = new Map(
       fotmobLineup.starters.map((p) => [normaliseName(p.name), p])
@@ -530,8 +554,6 @@ function applyFormationRefinement(
   if (!catCounts) {
     return espnLineup;
   }
-
-  const lineupForStats = espnLineup;
 
   const starters = espnLineup.filter(p => p.starter);
   const subs = espnLineup.filter(p => !p.starter);

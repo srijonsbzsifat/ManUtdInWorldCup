@@ -28,20 +28,31 @@ export async function GET() {
       (m) => m.status === "FINISHED" || m.status === "IN_PLAY" || m.status === "PAUSED"
     );
 
-    const results = await Promise.allSettled(analysable.map((m) => fetchMatchDetails(m)));
+    // Dedup: skip fetchMatchDetails for matches that already have lineups
+    // from the scoreboard endpoint (e.g. FINISHED matches from a previous
+    // fetch that were enriched and cached).  Save an HTTP round-trip.
+    const needDetails = analysable.filter((m) => !m.lineups);
+    const skipDetails = analysable.filter((m) => m.lineups);
+    const cached = skipDetails;
+
+    const results = await Promise.allSettled(needDetails.map((m) => fetchMatchDetails(m)));
     const failed = results.filter((r) => r.status === "rejected").length;
     if (failed > 0) console.warn(`stats: ${failed}/${results.length} match detail fetches failed`);
-    const detailed = results
+    const fresh = results
       .filter((r): r is PromiseFulfilledResult<Match> => r.status === "fulfilled")
       .map((r) => r.value);
-    const stats = computeTournamentStats(detailed);
+
+    const allDetailed = [...cached, ...fresh];
+    const stats = computeTournamentStats(allDetailed);
 
     return NextResponse.json({
       stats,
       topScorers: topPerformers(stats, "goals", 5),
       topRated: topPerformers(stats, "averageRating", 5),
-      matchesAnalysed: detailed.filter((m) => m.lineups).length,
+      matchesAnalysed: allDetailed.filter((m) => m.lineups).length,
       totalFixtures: analysable.length,
+      // Log how many HTTP calls we saved for debugging
+      _detailCallSavings: skipDetails.length,
     });
   } catch (err) {
     console.error("stats failed", err);

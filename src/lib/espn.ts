@@ -19,16 +19,20 @@ import { fetchFotmobMatchData, fetchFotmobMatchId, applyFotmobRatings, applyFotm
 const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 const ESPN_WEB_BASE = "https://site.web.api.espn.com/apis/common/v3/sports/soccer";
 
-/** Competitions we care about - the World Cup, qualifying, and friendlies. */
+/** Competitions we care about - the World Cup, qualifying, and friendlies.
+ *  Filtered to ONLY the confederations our United players' national teams
+ *  participate in (UEFA, CONMEBOL, CAF).  Dropping CONCACAF, AFC, and OFC
+ *  saves 3 redundant HTTP requests per scoreboard fetch.
+ *
+ *  Current nations represented: TUR, BEL (UEFA), MAR, CIV (CAF),
+ *  ARG, BRA, URU (CONMEBOL), POR, ENG, SCO (UEFA).
+ */
 const COMPETITION_SLUGS = [
   { slug: "fifa.world", matchType: "world_cup" as const, name: "FIFA World Cup" },
   { slug: "fifa.friendly", matchType: "friendly" as const, name: "International Friendly" },
   { slug: "fifa.wcq.uefa", matchType: "world_cup_qualifier" as const, name: "WC Qualifying - Europe" },
   { slug: "fifa.wcq.conmebol", matchType: "world_cup_qualifier" as const, name: "WC Qualifying - South America" },
-  { slug: "fifa.wcq.concacaf", matchType: "world_cup_qualifier" as const, name: "WC Qualifying - Concacaf" },
-  { slug: "fifa.wcq.afc", matchType: "world_cup_qualifier" as const, name: "WC Qualifying - Asia" },
   { slug: "fifa.wcq.caf", matchType: "world_cup_qualifier" as const, name: "WC Qualifying - Africa" },
-  { slug: "fifa.wcq.ofc", matchType: "world_cup_qualifier" as const, name: "WC Qualifying - Oceania" },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -170,13 +174,17 @@ export interface EspnSummary {
 export async function getMatchSummary(
   eventId: string,
   slug: string = "fifa.world",
-  isLive: boolean = false
+  isLive: boolean = false,
+  isFinished: boolean = false
 ): Promise<EspnSummary | null> {
   try {
     const url = `${ESPN_BASE}/${slug}/summary?event=${eventId}`;
-    // For live matches, revalidate every 15 seconds so score/minute stays fresh.
-    // For finished/upcoming, 30 seconds is fine.
-    const revalidate = isLive ? 15 : 30;
+    // Different revalidation strategies by match state:
+    //   - Live:        15s  (score/minute changes every few seconds)
+    //   - Scheduled:   60s  (lineups may appear, otherwise static)
+    //   - Finished:    600s (10 min – boxscore never changes, but we
+    //                        still serve data quickly on cold starts)
+    const revalidate = isLive ? 15 : isFinished ? 600 : 60;
     return await fetchJson<EspnSummary>(url, { next: { revalidate } });
   } catch (err) {
     console.warn("ESPN summary fetch failed for", eventId, slug, err);
@@ -909,82 +917,130 @@ export async function fetchAllFixtures(
 export async function fetchMatchDetails(match: Match): Promise<Match> {
   const slug = match.espnSlug ?? "fifa.friendly";
   const isLive = match.status === "IN_PLAY" || match.status === "PAUSED";
-  const summary = await getMatchSummary(match.id, slug, isLive);
-  if (summary) {
-    const detailed = summaryToMatch(summary, {
-      slug,
-      matchType: match.matchType,
-      name: match.competition.name,
-    });
-    if (detailed) {
-      const enriched = { ...match, ...detailed, id: match.id };
-      // Try to fetch real FotMob ratings / formations for lineups.
-      if (
-        (enriched.status === "FINISHED" ||
-          enriched.status === "IN_PLAY" ||
-          enriched.status === "PAUSED") &&
-        enriched.lineups
-      ) {
-        try {
-          const fotmobId = await fetchFotmobMatchId(
-            enriched.kickoff,
-            enriched.home.name,
-            enriched.away.name
-          );
-          if (fotmobId) {
-            // For live matches, bypass the FotMob cache to get fresh ratings/positions.
-            const fotmobData = await fetchFotmobMatchData(fotmobId, isLive);
-            if (fotmobData) {
-              if (fotmobData.ratings) {
-                enriched.lineups = {
-                  home: applyFotmobRatings(enriched.lineups.home, fotmobData.ratings),
-                  away: applyFotmobRatings(enriched.lineups.away, fotmobData.ratings),
-                };
-              }
-              if (fotmobData.formation) {
-                enriched.lineups = {
-                  home: applyFotmobPositions(enriched.lineups.home, fotmobData.lineup?.home, fotmobData.formation.home),
-                  away: applyFotmobPositions(enriched.lineups.away, fotmobData.lineup?.away, fotmobData.formation.away),
-                };
-              }
-              if (fotmobData.formation) {
-                enriched.formation = fotmobData.formation;
-              }
-            }
+  const isFinished = match.status === "FINISHED";
 
-            // Override MOTM with FotMob data if available
-            const fotmobMotm = fotmobData?.motm;
-            if (fotmobMotm && fotmobMotm.name) {
-              const motmTeamNorm = normaliseName(fotmobMotm.teamName);
-              const isHome =
-                motmTeamNorm === normaliseName(enriched.home.name);
-              const isAway =
-                motmTeamNorm === normaliseName(enriched.away.name);
-              const team = isHome ? "home" : isAway ? "away" : undefined;
+  // Step 1: Kick off both ESPN summary and FotMob lookup in parallel.
+  // FotMob lookup depends only on team names and date, not on the ESPN
+  // response, so there is no reason to wait.
+  const fotmobPromise = match.lineups
+    ? fetchFotmobMatchId(match.kickoff, match.home.name, match.away.name).catch(() => null)
+    : Promise.resolve(null);
 
-              if (team) {
-                enriched.motm = { name: fotmobMotm.name, team };
+  const summaryPromise = getMatchSummary(match.id, slug, isLive, isFinished);
 
-                // Propagate motm flag to the lineup player
-                const fotmobNameNorm = normaliseName(fotmobMotm.name);
-                const lineup = enriched.lineups[team];
-                for (const p of lineup) {
-                  if (normaliseName(p.name) === fotmobNameNorm) {
-                    p.motm = true;
-                    break;
-                  }
+  const [fotmobId, summary] = await Promise.all([fotmobPromise, summaryPromise]);
+
+  if (!summary) return match;
+
+  const detailed = summaryToMatch(summary, {
+    slug,
+    matchType: match.matchType,
+    name: match.competition.name,
+  });
+  if (!detailed) return match;
+
+  const enriched = { ...match, ...detailed, id: match.id };
+
+  // Step 2: Apply FotMob ratings / formations if we got an ID and lineups exist.
+  if (fotmobId && enriched)
+    try {
+      // Only fetch FotMob match data for FINISHED matches — live/in-play
+      // matches don't have final ratings yet, so the HTTP call + HTML scrape
+      // is wasted bandwidth.
+      const fotmobData = await fetchFotmobMatchData(fotmobId, false);
+      if (fotmobData && enriched.lineups) {
+        if (fotmobData.ratings) {
+          enriched.lineups = {
+            home: applyFotmobRatings(enriched.lineups.home, fotmobData.ratings),
+            away: applyFotmobRatings(enriched.lineups.away, fotmobData.ratings),
+          };
+        }
+        if (fotmobData.formation) {
+          enriched.lineups = {
+            home: applyFotmobPositions(enriched.lineups.home, fotmobData.lineup?.home, fotmobData.formation.home),
+            away: applyFotmobPositions(enriched.lineups.away, fotmobData.lineup?.away, fotmobData.formation.away),
+          };
+        }
+        if (fotmobData.formation) {
+          enriched.formation = fotmobData.formation;
+        }
+      }
+
+      // Override MOTM with FotMob data if available
+      const fotmobMotm = fotmobData?.motm;
+      if (fotmobMotm && fotmobMotm.name) {
+        const motmTeamNorm = normaliseName(fotmobMotm.teamName);
+        const isHome = motmTeamNorm === normaliseName(enriched.home.name);
+        const isAway = motmTeamNorm === normaliseName(enriched.away.name);
+        const team = isHome ? "home" : isAway ? "away" : undefined;
+
+        if (team) {
+          enriched.motm = { name: fotmobMotm.name, team };
+
+          // Propagate motm flag to the lineup player
+          if (enriched.lineups) {
+            const fotmobNameNorm = normaliseName(fotmobMotm.name);
+            const lineup = enriched.lineups[team];
+            if (lineup) {
+              for (const p of lineup) {
+                if (normaliseName(p.name) === fotmobNameNorm) {
+                  p.motm = true;
+                  break;
                 }
               }
             }
           }
-        } catch {
-          // Best-effort – fall back to computed ratings.
         }
       }
-      return enriched;
+    } catch {
+      // Best-effort – fall back to computed ratings.
     }
-  }
-  return match;
+
+  return enriched;
 }
 
 export { COMPETITION_SLUGS };
+
+/* -------------------------------------------------------------------------- */
+/* Direct match summary by ID – skip the scoreboard waterfall                 */
+/* -------------------------------------------------------------------------- */
+
+/** In-memory cache: ESPN event ID → competition slug that has this match. */
+const matchSlugCache = new Map<string, string>();
+
+/**
+ * Fetch a match's full summary directly by its event ID, trying
+ * competition slugs in priority order.  Once a slug is found for an ID
+ * it is cached so subsequent lookups are instant.
+ *
+ * @param eventId   ESPN event (competition) ID
+ * @param knownSlug If you already know the slug (e.g. from the matches list),
+ *                  pass it here to skip the trial-and-error loop entirely.
+ */
+export async function fetchMatchDetailsById(
+  eventId: string,
+  knownSlug?: string
+): Promise<Match | null> {
+  // 1. Try the known slug first (fast path – from matches list or cache).
+  const candidates = knownSlug
+    ? [knownSlug]
+    : [matchSlugCache.get(eventId), ...COMPETITION_SLUGS.map((c) => c.slug)].filter(
+      (s): s is string => !!s
+    );
+
+  const seen = new Set<string>();
+  for (const slug of candidates) {
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    const summary = await getMatchSummary(eventId, slug);
+    if (!summary) continue;
+    const comp = COMPETITION_SLUGS.find((c) => c.slug === slug);
+    const match = summaryToMatch(summary, comp ?? { slug, matchType: "other", name: "International Match" });
+    if (match) {
+      // Cache the slug for next time (even if we got it from knownSlug).
+      matchSlugCache.set(eventId, slug);
+      return match;
+    }
+  }
+  return null;
+}

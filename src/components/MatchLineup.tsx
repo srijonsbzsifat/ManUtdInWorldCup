@@ -8,6 +8,8 @@ interface MatchLineupProps {
 
 export function MatchLineup({ match }: MatchLineupProps) {
     const hasFormation = match.formation?.home || match.formation?.away;
+    const homeEvents = match.events.filter((e) => e.team === "home");
+    const awayEvents = match.events.filter((e) => e.team === "away");
 
     if (hasFormation) {
         return (
@@ -16,8 +18,8 @@ export function MatchLineup({ match }: MatchLineupProps) {
                 awayFormation={match.formation?.away || undefined}
                 homeLineup={match.lineups?.home || []}
                 awayLineup={match.lineups?.away || []}
-                homeEvents={match.events}
-                awayEvents={match.events}
+                homeEvents={homeEvents}
+                awayEvents={awayEvents}
                 homeTeam={match.home}
                 awayTeam={match.away}
             />
@@ -30,13 +32,13 @@ export function MatchLineup({ match }: MatchLineupProps) {
             <TeamLineup
                 team={match.home}
                 players={match.lineups?.home || []}
-                events={match.events}
+                events={homeEvents}
                 orientation="home"
             />
             <TeamLineup
                 team={match.away}
                 players={match.lineups?.away || []}
-                events={match.events}
+                events={awayEvents}
                 orientation="away"
             />
         </div>
@@ -87,13 +89,10 @@ function TeamLineup({ team, players, events, orientation }: TeamLineupProps) {
                 </div>
             </div>
 
-            <div className={cn(
-                "bg-gray-50 rounded-lg p-3 border",
-                orientation === "home" ? "border-team-home" : "border-team-away"
-            )}>
+            <div className="glass rounded-lg p-3 border border-white/10">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
                     <div>
-                        <h4 className="text-xs font-semibold text-gray-500 mb-1">Starting XI</h4>
+                        <h4 className="text-xs font-semibold text-white/50 mb-1">Starting XI</h4>
                         <div className="space-y-1">
                             {starters.map(player => (
                                 <PlayerLine
@@ -105,7 +104,7 @@ function TeamLineup({ team, players, events, orientation }: TeamLineupProps) {
                         </div>
                     </div>
                     <div>
-                        <h4 className="text-xs font-semibold text-gray-500 mb-1">Substitutes</h4>
+                        <h4 className="text-xs font-semibold text-white/50 mb-1">Substitutes</h4>
                         <div className="space-y-1">
                             {subs.length > 0 ? (
                                 subs.map(player => (
@@ -117,7 +116,7 @@ function TeamLineup({ team, players, events, orientation }: TeamLineupProps) {
                                     />
                                 ))
                             ) : (
-                                <span className="text-xs text-gray-400">No substitutes</span>
+                                <span className="text-xs text-white/40">No substitutes</span>
                             )}
                         </div>
                     </div>
@@ -153,9 +152,9 @@ function PlayerLine({ player, events, subMarker }: PlayerLineProps) {
             <div className="flex-1 font-medium">
                 {player.name}
                 {player.motm && !player.starter && <span className="text-amber-400 ml-0.5 text-xs">★</span>}
-                <span className="ml-1 text-xs text-gray-500">{player.position}</span>
+                <span className="ml-1 text-xs text-white/50">{player.position}</span>
             </div>
-            <div className="flex items-center text-xs text-gray-500">
+            <div className="flex items-center text-xs text-white/50">
                 {subMarker && <span className="mr-2">{subMarker}</span>}
                 {getEventIcons()}
             </div>

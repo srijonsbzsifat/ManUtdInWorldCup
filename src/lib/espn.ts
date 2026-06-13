@@ -674,15 +674,18 @@ function extractSubMinute(plays: any[]): number | null {
   return parseClockMinute(plays[0]?.clock);
 }
 
-function computeMinutesPlayed(
+export function computeMinutesPlayed(
   starter: boolean,
   subOn: number | null,
   subOff: number | null,
   matchDuration: number = 90
 ): number {
   if (starter && subOff == null) return matchDuration;
-  if (!starter && subOn != null) return Math.max(0, matchDuration - subOn);
   if (starter && subOff != null) return subOff;
+  // Sub who came on and was later subbed off again (injury/tactical/red card):
+  // credit only the window they were actually on the pitch.
+  if (!starter && subOn != null && subOff != null) return Math.max(0, subOff - subOn);
+  if (!starter && subOn != null) return Math.max(0, matchDuration - subOn);
   return 0;
 }
 
@@ -976,18 +979,25 @@ export interface FetchFixturesOptions {
 
 const WC_TOURNAMENT_START = new Date("2026-06-11T00:00:00Z");
 
+/**
+ * The competition slugs worth fetching right now.  Once the tournament is
+ * underway, qualifiers are finished — their ESPN endpoints hang rather than
+ * returning empty, burning the full timeout budget on every cold request — so
+ * we drop them during the WC period.
+ */
+function activeCompetitionSlugs(): typeof COMPETITION_SLUGS {
+  const duringTournament = Date.now() >= WC_TOURNAMENT_START.getTime();
+  return duringTournament
+    ? COMPETITION_SLUGS.filter((c) => c.matchType !== "world_cup_qualifier")
+    : COMPETITION_SLUGS;
+}
+
 export async function fetchAllFixtures(
   options: FetchFixturesOptions = {}
 ): Promise<Match[]> {
   evictCompetitionFailureCache();
 
-  // Once the tournament is underway, qualifiers are finished — their ESPN
-  // endpoints hang rather than returning empty, burning the full timeout budget
-  // on every cold request.  Skip them entirely during the WC period.
-  const duringTournament = Date.now() >= WC_TOURNAMENT_START.getTime();
-  const competitionsToFetch = duringTournament
-    ? COMPETITION_SLUGS.filter((c) => c.matchType !== "world_cup_qualifier")
-    : COMPETITION_SLUGS;
+  const competitionsToFetch = activeCompetitionSlugs();
 
   const all: Match[] = [];
   const seen = new Set<string>();
@@ -1038,10 +1048,9 @@ export async function fetchMatchDetails(match: Match): Promise<Match> {
   // Step 2: Apply FotMob ratings / formations if we got an ID and lineups exist.
   if (fotmobId && enriched)
     try {
-      // Only fetch FotMob match data for FINISHED matches — live/in-play
-      // matches don't have final ratings yet, so the HTTP call + HTML scrape
-      // is wasted bandwidth.
-      const fotmobData = await fetchFotmobMatchData(fotmobId, false);
+      // For live/in-play matches, bypass the 24h FotMob cache so ratings and
+      // MOTM refresh as the game progresses; finished matches use the cache.
+      const fotmobData = await fetchFotmobMatchData(fotmobId, isLive);
       if (fotmobData && enriched.lineups) {
         if (fotmobData.ratings) {
           enriched.lineups = {
@@ -1116,9 +1125,11 @@ export async function fetchMatchDetailsById(
   knownSlug?: string
 ): Promise<Match | null> {
   // 1. Try the known slug first (fast path – from matches list or cache).
+  //    Otherwise fall back to the active slugs only (skips dead qualifier
+  //    endpoints that hang during the tournament).
   const candidates = knownSlug
     ? [knownSlug]
-    : [matchSlugCache.get(eventId), ...COMPETITION_SLUGS.map((c) => c.slug)].filter(
+    : [matchSlugCache.get(eventId), ...activeCompetitionSlugs().map((c) => c.slug)].filter(
       (s): s is string => !!s
     );
 

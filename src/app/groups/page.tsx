@@ -94,7 +94,7 @@ function GroupTable({ group }: { group: GroupInfo }) {
                       {entry.logo && (
                         <Image
                           src={entry.logo}
-                          alt=""
+                          alt={`${entry.name} crest`}
                           width={16}
                           height={16}
                           className="object-contain flex-shrink-0"

@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import Link from "next/link";
 import MatchCard from "@/components/MatchCard";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import type { Match } from "@/types";
@@ -48,12 +49,12 @@ export default function LivePage() {
             No Manchester United players are currently on the pitch in the
             World Cup or international friendlies.
           </p>
-          <a
+          <Link
             href="/matches?tab=upcoming"
-            className="inline-block mt-4 px-4 py-2 rounded-lg bg-united-red text-white text-sm font-semibold"
+            className="inline-block mt-4 px-4 py-2 rounded-lg bg-united-red text-white text-sm font-semibold hover:bg-united-darkred transition-colors"
           >
             View upcoming matches
-          </a>
+          </Link>
         </div>
       )}
 

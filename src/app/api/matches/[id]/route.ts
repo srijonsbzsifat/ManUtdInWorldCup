@@ -24,8 +24,8 @@ export async function GET(
       end.setDate(end.getDate() + 30);
       const endCapped = end > MAX_DATE ? MAX_DATE : end;
 
-      const { fetchAllFixtures } = await import("@/lib/espn");
-      const fixtures = await fetchAllFixtures({ dateRange: { start, end: endCapped } });
+      const { getCachedFixtures } = await import("@/lib/fixture-cache");
+      const fixtures = await getCachedFixtures({ start, end: endCapped });
       const found = fixtures.find((m) => m.id === params.id);
       if (!found) {
         return NextResponse.json({ error: "Match not found" }, { status: 404 });

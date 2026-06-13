@@ -5,7 +5,7 @@ import { runWithConcurrencyLimit } from "@/lib/utils";
 import { NATIONAL_TEAMS } from "@/lib/players";
 import type { Match } from "@/types";
 
-export const revalidate = 15;
+export const dynamic = "force-dynamic";
 
 const VALID_STATUSES = ["live", "upcoming", "finished"] as const;
 const MAX_DATE = new Date("2026-07-30T23:59:59Z");
@@ -134,13 +134,16 @@ export async function GET(req: Request) {
         .map((r) => r.value);
     }
 
-    return NextResponse.json({
-      count: totalCount,
-      limit: limit ?? totalCount,
-      start: start.toISOString(),
-      end: end.toISOString(),
-      matches,
-    });
+    return NextResponse.json(
+      {
+        count: totalCount,
+        limit: limit ?? totalCount,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        matches,
+      },
+      { headers: { "Cache-Control": "s-maxage=15, stale-while-revalidate=15" } }
+    );
   } catch (err) {
     console.error("matches fetch failed", err);
     return NextResponse.json(

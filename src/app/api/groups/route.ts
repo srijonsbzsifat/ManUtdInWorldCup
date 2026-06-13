@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchJson } from "@/lib/fetch";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 interface StandingsEntry {
   team: {
@@ -105,7 +105,10 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ groups });
+    return NextResponse.json(
+      { groups },
+      { headers: { "Cache-Control": "s-maxage=120, stale-while-revalidate=120" } }
+    );
   } catch (err) {
     console.error("groups fetch failed", err);
     return NextResponse.json(

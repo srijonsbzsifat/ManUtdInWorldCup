@@ -11,6 +11,7 @@ interface StatsResponse {
   topRated: PlayerTournamentStats[];
   matchesAnalysed: number;
   totalFixtures: number;
+  statsScope: "world_cup" | "all";
 }
 
 export function StatsLeaderboard({
@@ -43,15 +44,20 @@ export function StatsLeaderboard({
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {ordered.map(({ player, stats }, i) => (
-        <PlayerCard
-          key={player.id}
-          player={player}
-          stats={stats}
-          rank={stats.matches > 0 ? i + 1 : undefined}
-        />
-      ))}
+    <div className="space-y-3">
+      {data?.statsScope === "world_cup" && (
+        <p className="text-xs text-slate-400">World Cup stats only</p>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {ordered.map(({ player, stats }, i) => (
+          <PlayerCard
+            key={player.id}
+            player={player}
+            stats={stats}
+            rank={stats.matches > 0 ? i + 1 : undefined}
+          />
+        ))}
+      </div>
     </div>
   );
 }

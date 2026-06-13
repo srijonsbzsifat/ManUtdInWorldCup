@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getPlayerById } from "@/lib/players";
 import { fetchMatchDetails } from "@/lib/espn";
 import { getCachedFixtures } from "@/lib/fixture-cache";
-import { computePlayerPerformances, computeTournamentStats } from "@/lib/aggregator";
+import { computePlayerPerformances, computeTournamentStats, getStatsScope } from "@/lib/aggregator";
+import { runWithConcurrencyLimit } from "@/lib/utils";
 
 export const revalidate = 30;
 
@@ -32,11 +33,10 @@ export async function GET(
     const teamMatchSlugs = fixtures.filter(
       (m) => m.home.code === player.nation.code || m.away.code === player.nation.code
     );
-    const detailedResults = await Promise.allSettled(
-      teamMatchSlugs.map((m) =>
-        // Skip fetchMatchDetails for matches that already have lineups
-        m.lineups ? Promise.resolve(m) : fetchMatchDetails(m)
-      )
+    const detailedResults = await runWithConcurrencyLimit(
+      teamMatchSlugs,
+      (m) => m.lineups ? Promise.resolve(m) : fetchMatchDetails(m),
+      4
     );
     const detailed = detailedResults
       .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
@@ -61,15 +61,17 @@ export async function GET(
       )
       .slice(0, 3);
 
-    return NextResponse.json({
-      player,
-      performances,
-      stats: tournamentStats,
-      matchesInWindow: teamMatchSlugs.length,
-      nextFixtures,
-      // Debug: how many fetchMatchDetails calls were skipped
-      _detailCallSavings: teamMatchSlugs.filter((m) => m.lineups).length,
-    });
+    return NextResponse.json(
+      {
+        player,
+        performances,
+        stats: tournamentStats,
+        matchesInWindow: teamMatchSlugs.length,
+        nextFixtures,
+        statsScope: getStatsScope(),
+      },
+      { headers: { "Cache-Control": "s-maxage=30, stale-while-revalidate=30" } }
+    );
   } catch (err) {
     console.error("player detail failed", err);
     return NextResponse.json(

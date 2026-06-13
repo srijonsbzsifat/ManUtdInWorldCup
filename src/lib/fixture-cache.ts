@@ -4,36 +4,31 @@ import type { Match } from "@/types";
 /**
  * Fixture cache TTLs:
  * - Past matches (finished): data never changes, long TTL
- * - Future matches: may change (postponements, scheduling), medium TTL
- * - Live matches: handled by 15s revalidation in ESPN adapter
+ * - Future / mixed ranges: medium TTL
+ * - Empty results: very short TTL — likely a transient ESPN failure, retry soon
  */
-const FIXTURE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes for past + future
+const FIXTURE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min for active ranges
+const EMPTY_RESULT_TTL_MS = 15_000;           // 15 s — don't poison the cache
 const MAX_CACHE_ENTRIES = 50;
 
 interface FixtureCacheEntry {
     expiresAt: number;
     fixtures: Match[];
-    /** Track whether these fixtures are from past or future to aid debug */
     type: "past" | "future" | "live";
 }
 
-// Map key: "YYYY-MM-DD|YYYY-MM-DD"
 const fixtureCache = new Map<string, FixtureCacheEntry>();
 
-/**
- * Evict stale entries to prevent unbounded memory growth in serverless env.
- * Called on every get/set.
- */
+// In-flight requests keyed by cache key — prevents concurrent cold-start bursts
+// from firing multiple identical ESPN calls simultaneously.
+const inflight = new Map<string, Promise<Match[]>>();
+
 function evictStale(): void {
     const now = Date.now();
     for (const [key, entry] of fixtureCache.entries()) {
-        if (now >= entry.expiresAt) {
-            fixtureCache.delete(key);
-        }
+        if (now >= entry.expiresAt) fixtureCache.delete(key);
     }
-    // Also enforce max size
     if (fixtureCache.size > MAX_CACHE_ENTRIES) {
-        // Delete oldest entries (Map preserves insertion order)
         const toDelete = fixtureCache.size - MAX_CACHE_ENTRIES;
         let i = 0;
         for (const key of fixtureCache.keys()) {
@@ -44,14 +39,12 @@ function evictStale(): void {
     }
 }
 
-/**
- * Get fixtures for a date range, using an in-memory cache keyed by
- * date slice. Avoids repeated ESPN scoreboard waterfalls.
- */
-export async function getCachedFixtures(dateRange: { start: Date; end: Date }): Promise<Match[]> {
+export async function getCachedFixtures(
+    dateRange: { start: Date; end: Date },
+    overrideTtlMs?: number
+): Promise<Match[]> {
     const key = `${dateRange.start.toISOString().slice(0, 10)}|${dateRange.end.toISOString().slice(0, 10)}`;
 
-    // Evict stale entries first
     evictStale();
 
     const entry = fixtureCache.get(key);
@@ -59,22 +52,28 @@ export async function getCachedFixtures(dateRange: { start: Date; end: Date }): 
         return entry.fixtures;
     }
 
-    const fixtures = await fetchAllFixtures({ dateRange });
+    // Coalesce: if an identical fetch is already in-flight, wait for it.
+    const existing = inflight.get(key);
+    if (existing) return existing;
 
-    // Determine cache type based on dates
-    const now = Date.now();
-    const isPast = dateRange.end.getTime() < now;
-    const isFuture = dateRange.start.getTime() > now;
-    const type = isPast ? "past" : isFuture ? "future" : "live";
+    const promise = fetchAllFixtures({ dateRange }).then((fixtures) => {
+        const now = Date.now();
+        const isPast = dateRange.end.getTime() < now;
+        const isFuture = dateRange.start.getTime() > now;
+        const type = isPast ? "past" : isFuture ? "future" : "live";
 
-    // Longer TTL for past data (never changes)
-    const ttl = isPast ? 30 * 60 * 1000 : FIXTURE_CACHE_TTL_MS;
+        // Empty results get a short TTL so transient ESPN failures don't poison
+        // the cache for the full 10 minutes.
+        const ttl = fixtures.length === 0
+            ? EMPTY_RESULT_TTL_MS
+            : overrideTtlMs ?? (isPast ? 30 * 60 * 1000 : FIXTURE_CACHE_TTL_MS);
 
-    fixtureCache.set(key, {
-        expiresAt: Date.now() + ttl,
-        fixtures,
-        type,
+        fixtureCache.set(key, { expiresAt: Date.now() + ttl, fixtures, type });
+        return fixtures;
+    }).finally(() => {
+        inflight.delete(key);
     });
 
-    return fixtures;
+    inflight.set(key, promise);
+    return promise;
 }

@@ -230,7 +230,7 @@ export function summaryToMatch(
     matchType: fallback.matchType,
     espnSlug: fallback.slug,
     events: mapEvents(summary, home.team?.id, away.team?.id, { home: parseScore(home.score), away: parseScore(away.score) }),
-    lineups: mapLineups(summary, home.team?.id, away.team?.id),
+    lineups: mapLineups(summary, home.team?.id, away.team?.id, status, minute),
     motm: mapMOTM(summary),
   };
 
@@ -541,7 +541,9 @@ function parseStoppage(clock: any): number | undefined {
 function mapLineups(
   summary: EspnSummary,
   homeTeamId: any,
-  awayTeamId: any
+  awayTeamId: any,
+  matchStatus?: MatchStatus,
+  liveMinute?: number | string | null
 ): Match["lineups"] | undefined {
   // ESPN exposes the full squad list under `summary.rosters[]` (one entry per
   // team).  The boxscore/teams[].roster field is usually empty for friendlies,
@@ -571,6 +573,19 @@ function mapLineups(
   const home: LineupPlayer[] = [];
   const away: LineupPlayer[] = [];
 
+  // For live matches, starters should be credited with the actual elapsed
+  // time, not the full 90 minutes.  Resolve the current clock minute here
+  // so every player in the roster loop can use the same value.
+  const isLive = matchStatus === "IN_PLAY" || matchStatus === "PAUSED";
+  let liveElapsed: number | null = null;
+  if (isLive) {
+    if (typeof liveMinute === "number" && liveMinute > 0) {
+      liveElapsed = liveMinute;
+    } else if (liveMinute === "HT") {
+      liveElapsed = 45;
+    }
+  }
+
   for (const t of rosterEntries) {
     const teamId = t?.team?.id;
     const roster = t?.roster ?? [];
@@ -595,7 +610,7 @@ function mapLineups(
         starter,
         subOnMinute,
         subOffMinute,
-        getMatchDuration(summary)
+        liveElapsed ?? getMatchDuration(summary)
       );
       const stats = extractStats(p);
       const position = mapPosition(athlete?.position?.abbreviation ?? p?.position?.abbreviation);
@@ -644,16 +659,6 @@ function mapLineups(
 
   if (home.length === 0 && away.length === 0) return undefined;
   return { home, away };
-}
-
-function playsForPlayer(summary: EspnSummary, playerName: string, position: "IN" | "OUT"): any[] {
-  return (summary?.plays ?? []).filter((p: any) => {
-    if (!String(p?.type?.text ?? "").toLowerCase().includes("substitution")) return false;
-    return (p.participants ?? []).some((part: any) => {
-      const type = String(part?.type ?? part?.position ?? "").toUpperCase();
-      return type === position && String(part?.athlete?.displayName ?? "").toLowerCase() === playerName.toLowerCase();
-    });
-  });
 }
 
 /**
@@ -889,7 +894,7 @@ function formatDate(d: Date): string {
  * Keyed by slug, value is the timestamp until which we should skip it.
  */
 const competitionFailureCache = new Map<string, number>();
-const COMPETITION_FAILURE_TTL_MS = 5 * 60 * 1000; // 5 min
+const COMPETITION_FAILURE_TTL_MS = 30 * 60 * 1000; // 30 min — dead qualifier endpoints won't recover fast
 const COMPETITION_FAILURE_MAX_SIZE = 20;
 
 /** Evict stale entries and enforce max size. */
@@ -927,7 +932,7 @@ async function fetchCompetitionWithTimeout(
   matchType: Match["matchType"],
   name: string,
   dateRange?: { start: Date; end: Date },
-  timeoutMs: number = 7_000
+  timeoutMs: number = 3_000
 ): Promise<Match[]> {
   // Skip if this competition is in the failure cache and hasn't expired
   const failureUntil = competitionFailureCache.get(slug);
@@ -969,16 +974,25 @@ export interface FetchFixturesOptions {
   withDetails?: boolean;
 }
 
+const WC_TOURNAMENT_START = new Date("2026-06-11T00:00:00Z");
+
 export async function fetchAllFixtures(
   options: FetchFixturesOptions = {}
 ): Promise<Match[]> {
-  // Clean failure cache periodically
   evictCompetitionFailureCache();
+
+  // Once the tournament is underway, qualifiers are finished — their ESPN
+  // endpoints hang rather than returning empty, burning the full timeout budget
+  // on every cold request.  Skip them entirely during the WC period.
+  const duringTournament = Date.now() >= WC_TOURNAMENT_START.getTime();
+  const competitionsToFetch = duringTournament
+    ? COMPETITION_SLUGS.filter((c) => c.matchType !== "world_cup_qualifier")
+    : COMPETITION_SLUGS;
 
   const all: Match[] = [];
   const seen = new Set<string>();
   const settled = await Promise.allSettled(
-    COMPETITION_SLUGS.map((c) =>
+    competitionsToFetch.map((c) =>
       fetchCompetitionWithTimeout(c.slug, c.matchType, c.name, options.dateRange)
     )
   );
@@ -1002,11 +1016,9 @@ export async function fetchMatchDetails(match: Match): Promise<Match> {
   const isFinished = match.status === "FINISHED";
 
   // Step 1: Kick off both ESPN summary and FotMob lookup in parallel.
-  // FotMob lookup depends only on team names and date, not on the ESPN
-  // response, so there is no reason to wait.
-  const fotmobPromise = match.lineups
-    ? fetchFotmobMatchId(match.kickoff, match.home.name, match.away.name).catch(() => null)
-    : Promise.resolve(null);
+  // FotMob lookup depends only on team names and date, not on lineups, so
+  // start it unconditionally — the apply step below guards on enriched.lineups.
+  const fotmobPromise = fetchFotmobMatchId(match.kickoff, match.home.name, match.away.name).catch(() => null);
 
   const summaryPromise = getMatchSummary(match.id, slug, isLive, isFinished);
 

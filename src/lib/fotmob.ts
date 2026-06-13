@@ -188,12 +188,15 @@ async function fetchFotmobPageHtml(
   return await res.text();
 }
 
-function extractFotmobContent(html: string): any | null {
-  const nextDataMatch = html.match(/__NEXT_DATA__[^>]*>(.*?)<\/script>/);
+export function extractFotmobContent(html: string): Record<string, unknown> | null {
+  // The `s` (dotall) flag lets `.` match newlines — essential since the JSON blob spans lines.
+  const nextDataMatch = html.match(/__NEXT_DATA__[^>]*>(.*?)<\/script>/s);
   if (!nextDataMatch) return null;
   try {
     const parsed = JSON.parse(nextDataMatch[1]);
-    return parsed?.props?.pageProps?.content ?? null;
+    const content = parsed?.props?.pageProps?.content;
+    if (!content || typeof content !== "object") return null;
+    return content as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -212,7 +215,7 @@ function collectAllLineupPlayers(lineup: any): any[] {
   return all;
 }
 
-function extractRatings(content: any): Record<string, number> | null {
+export function extractRatings(content: any): Record<string, number> | null {
   const lineup = content?.lineup;
   if (!lineup) return null;
 
@@ -236,7 +239,7 @@ function extractRatings(content: any): Record<string, number> | null {
   return result;
 }
 
-function extractMotm(content: any): { name: string; teamName: string } | null {
+export function extractMotm(content: any): { name: string; teamName: string } | null {
   const potm = content?.matchFacts?.playerOfTheMatch;
   if (!potm) return null;
 
@@ -257,7 +260,7 @@ function extractMotm(content: any): { name: string; teamName: string } | null {
   return { name: rawName, teamName: potm.teamName ?? "" };
 }
 
-function extractFormation(content: any): { home: string | null; away: string | null } | null {
+export function extractFormation(content: any): { home: string | null; away: string | null } | null {
   const lineup = content?.lineup;
   if (!lineup) return null;
 
@@ -336,6 +339,7 @@ export async function fetchFotmobMatchData(
   try {
     const html = await fetchFotmobPageHtml(fotmobMatchId, bypassCache);
     if (!html) {
+      console.warn(`fotmob[${fotmobMatchId}]: failed to fetch match page (HTTP error)`);
       cacheSet(matchDataCache, fotmobMatchId, null);
       cacheSet(ratingsCache, fotmobMatchId, null);
       cacheSet(motmCache, fotmobMatchId, null);
@@ -344,6 +348,7 @@ export async function fetchFotmobMatchData(
 
     const content = extractFotmobContent(html);
     if (!content) {
+      console.warn(`fotmob[${fotmobMatchId}]: __NEXT_DATA__ extraction failed — FotMob page structure may have changed`);
       cacheSet(matchDataCache, fotmobMatchId, null);
       cacheSet(ratingsCache, fotmobMatchId, null);
       cacheSet(motmCache, fotmobMatchId, null);

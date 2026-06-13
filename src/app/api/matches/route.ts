@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { fetchAllFixtures, fetchMatchDetails } from "@/lib/espn";
+import { fetchMatchDetails } from "@/lib/espn";
+import { getCachedFixtures } from "@/lib/fixture-cache";
+import { runWithConcurrencyLimit } from "@/lib/utils";
 import { NATIONAL_TEAMS } from "@/lib/players";
 import type { Match } from "@/types";
 
@@ -95,7 +97,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    let matches = await fetchAllFixtures({ dateRange: { start, end } });
+    let matches = await getCachedFixtures({ start, end });
 
     // Filter to only matches involving one of our nations.
     const nationCodes = new Set(NATIONAL_TEAMS.map((t) => t.code));
@@ -120,15 +122,16 @@ export async function GET(req: Request) {
 
     const totalCount = matches.length;
 
+    // Slice to limit BEFORE fetching details to avoid fan-out over matches we'll discard.
+    if (limit !== undefined) {
+      matches = matches.slice(0, limit);
+    }
+
     if (withDetails) {
-      const results = await Promise.allSettled(matches.map((m) => fetchMatchDetails(m)));
+      const results = await runWithConcurrencyLimit(matches, (m) => fetchMatchDetails(m), 4);
       matches = results
         .filter((r): r is PromiseFulfilledResult<Match> => r.status === "fulfilled")
         .map((r) => r.value);
-    }
-
-    if (limit !== undefined) {
-      matches = matches.slice(0, limit);
     }
 
     return NextResponse.json({

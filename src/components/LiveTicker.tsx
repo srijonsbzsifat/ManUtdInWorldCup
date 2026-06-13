@@ -5,8 +5,6 @@ import { LoadingSpinner } from "./LoadingSpinner";
 import type { Match } from "@/types";
 import Link from "next/link";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 /**
  * Polls /api/live every 30s.  When there is at least one match being played
  * the section becomes a live ticker; otherwise it shows the next 5 fixtures.
@@ -16,11 +14,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 export function LiveTicker() {
   const { data, error, isLoading } = useSWR<{ live: Match[]; count: number }>(
     "/api/live",
-    fetcher,
-    {
-      refreshInterval: 30_000,
-      revalidateOnFocus: true,
-    }
+    { refreshInterval: 30_000, revalidateOnFocus: true }
   );
 
   const live = data?.live ?? [];

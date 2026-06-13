@@ -13,13 +13,14 @@ import { UNITED_PLAYERS, matchUnitedPlayer, normaliseName } from "@/lib/players"
 /* Single source of truth - we compute everything from Match[]                */
 /* -------------------------------------------------------------------------- */
 
-const WC_START = new Date("2026-06-11T00:00:00Z");
+export const WC_START = new Date("2026-06-11T00:00:00Z");
+
+export function getStatsScope(): "world_cup" | "all" {
+  return Date.now() >= WC_START.getTime() ? "world_cup" : "all";
+}
 
 function shouldCountMatch(match: Match): boolean {
-  if (Date.now() >= WC_START.getTime()) {
-    return match.matchType === "world_cup";
-  }
-  return true;
+  return getStatsScope() === "world_cup" ? match.matchType === "world_cup" : true;
 }
 
 function emptyStats(playerId: string): PlayerTournamentStats {
@@ -132,7 +133,12 @@ function processLineup(
         }
         stats.goalsConceded += conceded;
       } else {
-        stats.goalsConceded += opponentScore;
+        // No goal events to inspect — only charge the full score to a starter.
+        // A sub keeper's on-pitch window is unknown without event data, so
+        // crediting them with goals they weren't on for would be inaccurate.
+        if (player.starter) {
+          stats.goalsConceded += opponentScore;
+        }
       }
     }
     stats.saves += player.saves ?? 0;

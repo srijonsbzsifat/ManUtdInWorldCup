@@ -103,6 +103,32 @@ describe("PitchView player placement", () => {
     expect(nodes.filter((n) => n.player.position === "GK")).toHaveLength(1);
   });
 
+  it("fans out multiple coordless same-position defenders instead of stacking them", () => {
+    // Provider divergence: two defenders didn't match FotMob and carry only the
+    // generic "DF" label with no layout. They must not land on the same spot.
+    const withCoords = BRAZIL_WITH_LAYOUT.filter(
+      (pl) => pl.id !== "332354" && pl.id !== "125514" // drop the two full-backs' coords
+    );
+    const dfA = p("332354", "Wesley", "DF"); // coordless
+    const dfB = p("125514", "Alex Sandro", "DF"); // coordless
+    const starters = [...withCoords, dfA, dfB];
+
+    const nodes = computePlayerNodes(starters, "4-2-3-1", true);
+    expect(nodes).toHaveLength(11);
+
+    const a = nodes.find((n) => n.player.id === "332354")!;
+    const b = nodes.find((n) => n.player.id === "125514")!;
+    // Distinct lateral positions (not stacked).
+    expect(Math.abs(a.y - b.y)).toBeGreaterThan(20);
+    // And clear of the two real centre-backs' lateral slots.
+    const cbY = nodes
+      .filter((n) => n.player.id === "258307" || n.player.id === "145405")
+      .map((n) => n.y);
+    for (const y of [a.y, b.y]) {
+      for (const c of cbY) expect(Math.abs(y - c)).toBeGreaterThan(8);
+    }
+  });
+
   it("assignPlayersToFormation excludes every extra keeper from the outfield", () => {
     const starters = [
       ...BRAZIL_WITH_LAYOUT.map((pl) => ({ ...pl, layout: undefined })),

@@ -207,9 +207,66 @@ const APPROX_LAYOUT: Record<string, { x: number; y: number }> = {
     CF: { x: 0.5, y: 0.86 }, ST: { x: 0.5, y: 0.86 }, FW: { x: 0.5, y: 0.86 },
 };
 
-function effectiveLayout(p: LineupPlayer): { x: number; y: number } {
-    if (p.layout && Number.isFinite(p.layout.x) && Number.isFinite(p.layout.y)) return p.layout;
+function hasRealCoords(p: LineupPlayer): boolean {
+    return Boolean(p.layout && Number.isFinite(p.layout.x) && Number.isFinite(p.layout.y));
+}
+
+function approxLayout(p: LineupPlayer): { x: number; y: number } {
     return APPROX_LAYOUT[p.position.toUpperCase()] ?? { x: 0.5, y: 0.52 };
+}
+
+function effectiveLayout(p: LineupPlayer): { x: number; y: number } {
+    if (hasRealCoords(p)) return p.layout!;
+    return approxLayout(p);
+}
+
+/**
+ * Build pitch coordinates for the starters who didn't match FotMob (no `layout`).
+ *
+ * Several coordless players often share the same generic position (e.g. ESPN
+ * reports two un-matched centre-backs both as "DF"), and `APPROX_LAYOUT` maps a
+ * position to a single point — so naively they would stack on the exact same
+ * spot and look like one node. Here we group coordless players by their depth
+ * band and fan them out laterally, steering clear of the lateral slots already
+ * taken by real-coordinate team-mates in that band, so the whole line is visible.
+ *
+ * Coordinates are in FotMob space (x: 0 = team's right → 1 = left; y: depth).
+ */
+function layoutCoordlessStarters(starters: LineupPlayer[]): Map<string, { x: number; y: number }> {
+    const out = new Map<string, { x: number; y: number }>();
+    const coordless = starters.filter((p) => !hasRealCoords(p));
+    if (coordless.length === 0) return out;
+
+    // Group by depth band (the approximate y for the player's position).
+    const bands = new Map<number, LineupPlayer[]>();
+    for (const p of coordless) {
+        const y = approxLayout(p).y;
+        const bucket = bands.get(y) ?? [];
+        bucket.push(p);
+        bands.set(y, bucket);
+    }
+
+    for (const [y, players] of bands) {
+        if (players.length === 1) {
+            // A lone player keeps its natural position-based lateral slot.
+            out.set(players[0].id, { x: approxLayout(players[0]).x, y });
+            continue;
+        }
+        // Lateral slots already occupied by real-coordinate players in this band.
+        const usedX = starters
+            .filter((p) => hasRealCoords(p) && Math.abs(p.layout!.y - y) < 0.08)
+            .map((p) => p.layout!.x);
+        // Evenly spaced candidate slots across the width, sorted to keep the
+        // team-sheet order left-to-right; pick the ones farthest from used slots.
+        const span = Math.max(players.length, usedX.length + players.length);
+        const candidates = Array.from({ length: span }, (_, i) => 0.12 + (0.76 * i) / (span - 1));
+        const free = candidates
+            .filter((c) => usedX.every((u) => Math.abs(u - c) > 0.6 / span))
+            .slice(0, players.length);
+        const slots = free.length >= players.length ? free : candidates.slice(0, players.length);
+        players.forEach((p, i) => out.set(p.id, { x: slots[i], y }));
+    }
+    return out;
 }
 
 /**
@@ -238,15 +295,16 @@ function dropExtraKeepers(starters: LineupPlayer[]): LineupPlayer[] {
  * carry real coordinates, so the caller falls back to the label-based heuristic.
  */
 function placeStartersByLayout(starters: LineupPlayer[], isHome: boolean): PlacedPlayer[] | null {
-    const realCoords = starters.filter(
-        (p) => p.layout && Number.isFinite(p.layout.x) && Number.isFinite(p.layout.y)
-    ).length;
+    const realCoords = starters.filter(hasRealCoords).length;
     // Need a majority of real coordinates to trust this path.
     if (realCoords < 7) return null;
 
+    // Fan out the coordless starters so same-position players don't stack.
+    const coordless = layoutCoordlessStarters(starters);
+
     // Fixed mapping from FotMob's normalised axes to our pitch geometry.
     return starters.map((p) => {
-        const L = effectiveLayout(p);
+        const L = hasRealCoords(p) ? p.layout! : (coordless.get(p.id) ?? approxLayout(p));
         const depth = 6 + L.y * 40;                  // own goal (~6) → halfway (~46)
         const lateral = 10 + (1 - L.x) * 80;         // x=1 (left) → top, x=0 (right) → bottom
         const x = isHome ? depth : 100 - depth;

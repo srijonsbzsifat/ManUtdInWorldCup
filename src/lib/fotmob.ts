@@ -173,10 +173,13 @@ async function fetchFotmobPageHtml(
   fotmobMatchId: number,
   bypassCache: boolean = false
 ): Promise<string | null> {
-  const cacheBuster = bypassCache ? `&_=${Date.now()}` : '';
+  // The match page URL has no query string, so the cache-buster must start a
+  // new one with `?` — using `&` makes it part of the path slug and FotMob 404s.
+  const cacheBuster = bypassCache ? `?_=${Date.now()}` : '';
   const url = `${FOTMOB_BASE}/match/${fotmobMatchId}${cacheBuster}`;
   const res = await fetch(url, {
-    next: bypassCache ? { revalidate: 0 } : undefined,
+    // `cache: 'no-store'` alone bypasses the Next data cache. Don't also pass
+    // `next: { revalidate: 0 }` — Next rejects the conflicting combination.
     cache: bypassCache ? 'no-store' : undefined,
     headers: {
       "User-Agent":
@@ -530,14 +533,70 @@ function getFotmobPosition(positionId: number | undefined, verticalX: number): P
  *      order (DEF → MID → WF → FW).
  *   3. For subs, keep ESPN original (we can't infer from formation).
  */
+/**
+ * Match each ESPN starter to a FotMob starter by name, keyed by ESPN player id.
+ *
+ *   Pass 1: exact normalised-name match.
+ *   Pass 2: for the leftovers, a token-subset match (one name's tokens are a
+ *           subset of the other's, e.g. FotMob "Gabriel" ⊂ ESPN "Gabriel
+ *           Magalhães"), applied only when exactly one candidate qualifies so a
+ *           short name can't be assigned to the wrong player.
+ *
+ * Matching by name is inherently imperfect across providers, so this widens the
+ * net just enough to recover common short/long-form gaps without false matches.
+ */
+function matchStartersByName(
+  espnStarters: LineupPlayer[],
+  fmStarters: FotmobLineupPlayer[]
+): Map<string, FotmobLineupPlayer> {
+  const result = new Map<string, FotmobLineupPlayer>();
+  const usedFm = new Set<FotmobLineupPlayer>();
+
+  const fmByNorm = new Map<string, FotmobLineupPlayer>();
+  for (const f of fmStarters) {
+    const key = normaliseName(f.name);
+    if (!fmByNorm.has(key)) fmByNorm.set(key, f);
+  }
+  for (const e of espnStarters) {
+    const f = fmByNorm.get(normaliseName(e.name));
+    if (f && !usedFm.has(f)) {
+      result.set(e.id, f);
+      usedFm.add(f);
+    }
+  }
+
+  const tokensOf = (name: string) => normaliseName(name).split(" ").filter(Boolean);
+  for (const e of espnStarters) {
+    if (result.has(e.id)) continue;
+    const eTokens = tokensOf(e.name);
+    if (eTokens.length === 0) continue;
+    const eSet = new Set(eTokens);
+    const candidates = fmStarters.filter((f) => {
+      if (usedFm.has(f)) return false;
+      const fTokens = tokensOf(f.name);
+      if (fTokens.length === 0) return false;
+      const fSet = new Set(fTokens);
+      const fSubsetE = fTokens.every((t) => eSet.has(t));
+      const eSubsetF = eTokens.every((t) => fSet.has(t));
+      return fSubsetE || eSubsetF;
+    });
+    if (candidates.length === 1) {
+      result.set(e.id, candidates[0]);
+      usedFm.add(candidates[0]);
+    }
+  }
+  return result;
+}
+
 export function applyFotmobPositions(
   espnLineup: LineupPlayer[],
   fotmobLineup: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null | undefined,
   formation?: string | null
 ): LineupPlayer[] {
   if (fotmobLineup?.starters) {
-    const startersMap = new Map(
-      fotmobLineup.starters.map((p) => [normaliseName(p.name), p])
+    const starterMatch = matchStartersByName(
+      espnLineup.filter((p) => p.starter),
+      fotmobLineup.starters
     );
     const subsMap = new Map(
       (fotmobLineup.subs ?? []).map((p) => [normaliseName(p.name), p])
@@ -546,7 +605,7 @@ export function applyFotmobPositions(
 
     const result = espnLineup.map((p) => {
       if (p.starter) {
-        const fm = startersMap.get(normaliseName(p.name));
+        const fm = starterMatch.get(p.id);
         if (fm) {
           const verticalX = fm.verticalLayout?.x ?? 0.5;
           const finalPos = getFotmobPosition(fm.positionId, verticalX) ?? p.position;

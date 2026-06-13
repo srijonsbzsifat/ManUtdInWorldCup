@@ -44,21 +44,36 @@ export async function GET(
     }
 
     // -- FotMob enrichment (ratings / positions / MOTM) --
+    // Runs for finished/live matches and for SCHEDULED matches once a confirmed
+    // XI exists: FotMob publishes the formation (e.g. 4-2-3-1) and precise pitch
+    // positions ~1h before kickoff, which is what drives the PitchView. For
+    // scheduled (and live) matches the FotMob page is still changing, so we
+    // bypass the 24h match-data cache to avoid pinning an empty pre-lineup result.
+    // For scheduled matches only enrich once ESPN has flagged a starting XI —
+    // far-out fixtures expose a full squad with no starters, and enriching those
+    // would hit FotMob (cache-bypassed) on every page view for no benefit.
+    const hasConfirmedXI = Boolean(
+      detailed.lineups &&
+        (detailed.lineups.home.some((p) => p.starter) ||
+          detailed.lineups.away.some((p) => p.starter))
+    );
     if (
       (detailed.status === "FINISHED" ||
         detailed.status === "IN_PLAY" ||
-        detailed.status === "PAUSED") &&
+        detailed.status === "PAUSED" ||
+        (detailed.status === "SCHEDULED" && hasConfirmedXI)) &&
       detailed.lineups
     ) {
       try {
         const isLive = detailed.status === "IN_PLAY" || detailed.status === "PAUSED";
+        const isScheduled = detailed.status === "SCHEDULED";
         const fotmobId = await fetchFotmobMatchId(
           detailed.kickoff,
           detailed.home.name,
           detailed.away.name
         );
         if (fotmobId) {
-          const fotmobData = await fetchFotmobMatchData(fotmobId, isLive);
+          const fotmobData = await fetchFotmobMatchData(fotmobId, isLive || isScheduled);
           if (fotmobData) {
             if (fotmobData.ratings) {
               detailed.lineups = {

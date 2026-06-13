@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import type { LineupPlayer, MatchEvent, PlayerPosition, MatchTeam } from '@/types';
 import { cn, ratingColor } from '@/lib/utils';
+import { computePlayerNodes } from '@/lib/formation';
 
 interface PitchViewProps {
     homeFormation?: string;
@@ -13,188 +14,6 @@ interface PitchViewProps {
     awayEvents: MatchEvent[];
     homeTeam: MatchTeam;
     awayTeam: MatchTeam;
-}
-
-// Convert 4-2-3-1 etc into left-to-right horizontal coordinates.
-// Home team (Left half): GK is at x=8, DEF at x=20, MID at x=32, FW at x=44.
-// Away team (Right half): GK is at x=92, DEF at x=80, MID at x=68, FW at x=56.
-// Y is vertical, from 10 to 90.
-const FORMATION_LAYOUTS: Record<string, number[]> = {
-    "4-4-2": [4, 4, 2],
-    "4-3-3": [4, 3, 3],
-    "4-2-3-1": [4, 2, 3, 1],
-    "4-5-1": [4, 5, 1],
-    "4-1-4-1": [4, 1, 4, 1],
-    "3-4-3": [3, 4, 3],
-    "3-5-2": [3, 5, 2],
-    "3-4-2-1": [3, 4, 2, 1],
-    "3-4-1-2": [3, 4, 1, 2],
-    "5-3-2": [5, 3, 2],
-    "5-4-1": [5, 4, 1],
-    "4-2-2-2": [4, 2, 2, 2],
-    "4-3-2-1": [4, 3, 2, 1],
-    "4-3-1-2": [4, 3, 1, 2],
-    "4-4-1-1": [4, 4, 1, 1],
-    "3-3-3-1": [3, 3, 3, 1],
-};
-
-function categorizePosition(position: string): "GK" | "DEF" | "MID" | "FW" | "WF" {
-    const pos = position.toUpperCase();
-    if (pos === "GK") return "GK";
-    if (["LB", "LCB", "CB", "RCB", "RB", "FB", "WB", "DF"].includes(pos)) return "DEF";
-    if (["DM", "LCM", "CM", "RCM", "AM", "MF", "LM", "RM"].includes(pos)) return "MID";
-    if (["LW", "RW"].includes(pos)) return "WF";
-    return "FW";
-}
-
-/**
- * Left-to-right ordering within a single formation row.
- * Team's LEFT flank = top of horizontal pitch (small y) = small index.
- * Team's RIGHT flank = bottom (large y) = large index.
- * AM sits between LM and RM (center of an AM row).
- * ST sits between LW and RW (center of a forward row).
- */
-function positionHorizontalOrder(position: string): number {
-    const leftToRight = [
-        "GK",
-        "LB", "LWB", "LCB", "CB", "RCB", "RB", "RWB", "FB", "DF", "WB",
-        "LM", "DM", "LCM", "CM", "AM", "RCM", "RM", "MF",
-        "LW", "CF", "ST", "FW", "RW",
-    ];
-    const idx = leftToRight.indexOf(position.toUpperCase());
-    return idx >= 0 ? idx : 99;
-}
-
-/**
- * Depth score for assigning players to the correct formation line.
- * Lower = closer to own goal (DEF), higher = closer to opponent's goal (FW).
- */
-function positionDepthScore(position: string): number {
-    const pos = position.toUpperCase();
-    if (["LB", "CB", "RB", "LCB", "RCB", "FB", "WB", "DF"].includes(pos)) return 10;
-    if (pos === "DM") return 20;
-    if (["CM", "LCM", "RCM"].includes(pos)) return 30;
-    if (["LM", "RM", "MF"].includes(pos)) return 35;
-    if (pos === "AM") return 40;
-    if (["LW", "RW"].includes(pos)) return 45;
-    if (["CF", "ST", "FW"].includes(pos)) return 50;
-    return 35;
-}
-
-function generateCoordinatesForFormation(formation: string, isHome: boolean): { x: number; y: number }[] {
-    const layout = FORMATION_LAYOUTS[formation];
-    if (!layout) {
-        // Try to parse dynamically from a formation string like "4-2-3-1"
-        const parts = formation.split("-").map(Number);
-        if (parts.some(isNaN) || parts.length === 0) return [];
-        const coords: { x: number; y: number }[] = [];
-        coords.push({ x: 8, y: 50 });
-        const lines = parts.length;
-        const startX = 18;
-        const endX = 45;
-        const stepX = (endX - startX) / Math.max(lines, 1);
-        parts.forEach((lineCount, lineIdx) => {
-            const x = startX + lineIdx * stepX + stepX / 2;
-            for (let i = 0; i < lineCount; i++) {
-                const y = 10 + ((i + 1) * 80) / (lineCount + 1);
-                coords.push({ x, y });
-            }
-        });
-        if (isHome) return coords;
-        // Away team attacks right-to-left: mirror x AND flip y so their right
-        // flank (RB/RM/RW) appears at the top of the screen, matching FotMob.
-        return coords.map((p) => ({ x: 100 - p.x, y: 100 - p.y }));
-    }
-
-    const coords: { x: number; y: number }[] = [];
-    coords.push({ x: 8, y: 50 });
-    const lines = layout.length;
-    const startX = 18;
-    const endX = 45;
-    const stepX = (endX - startX) / Math.max(lines, 1);
-    layout.forEach((lineCount, lineIdx) => {
-        const x = startX + lineIdx * stepX + stepX / 2;
-        for (let i = 0; i < lineCount; i++) {
-            const y = 10 + ((i + 1) * 80) / (lineCount + 1);
-            coords.push({ x, y });
-        }
-    });
-    if (isHome) return coords;
-    return coords.map((p) => ({ x: 100 - p.x, y: 100 - p.y }));
-}
-
-/**
- * Assign starters to formation slots.
- *
- * Strategy:
- *   1. Pull out the GK.
- *   2. Sort the remaining 10 outfield players by positionDepthScore so that
- *      defenders naturally go to the back line, DMs to the next line, etc.
- *      Stable sort preserves ESPN (team-sheet) order for ties.
- *   3. Feed the depth-sorted pool into formation lines one line at a time,
- *      taking exactly `lineCount` players per line.
- *   4. Within each line, sort by positionHorizontalOrder so that left-flank
- *      players end up at the top of the screen and right-flank at the bottom.
- */
-function assignPlayersToFormation(
-    starters: LineupPlayer[],
-    formation: string
-): (LineupPlayer | null)[] {
-    let layout = FORMATION_LAYOUTS[formation];
-    if (!layout) {
-        const parts = formation.split("-").map(Number);
-        if (parts.some(isNaN) || parts.length === 0) return [];
-        layout = parts;
-    }
-
-    if (starters.length === 0) return [];
-
-    const gk = starters.find((p) => categorizePosition(p.position) === "GK") ?? null;
-    const result: (LineupPlayer | null)[] = [gk];
-
-    // Pre-fill slots
-    for (const count of layout) {
-        for (let i = 0; i < count; i++) result.push(null);
-    }
-
-    const used = new Set<string>();
-    if (gk) used.add(gk.id);
-
-    // Sort outfield players by depth (stable — ties keep ESPN order)
-    const outfield = starters
-        .filter((p) => !used.has(p.id))
-        .sort((a, b) => positionDepthScore(a.position) - positionDepthScore(b.position));
-
-    // Assign to formation lines in depth order, sorting laterally within each line
-    let poolIdx = 0;
-    for (let lineIdx = 0; lineIdx < layout.length; lineIdx++) {
-        const count = layout[lineIdx];
-        const offset = 1 + layout.slice(0, lineIdx).reduce((a, b) => a + b, 0);
-
-        const linePlayers = outfield.slice(poolIdx, poolIdx + count);
-        poolIdx += count;
-
-        // Sort left-to-right within the line
-        linePlayers.sort(
-            (a, b) => positionHorizontalOrder(a.position) - positionHorizontalOrder(b.position)
-        );
-
-        for (let i = 0; i < linePlayers.length; i++) {
-            result[offset + i] = linePlayers[i];
-            used.add(linePlayers[i].id);
-        }
-    }
-
-    // Overflow: any remaining unassigned players fill empty slots
-    const overflow = starters.filter((p) => !used.has(p.id));
-    let oIdx = 0;
-    for (let i = 0; i < result.length && oIdx < overflow.length; i++) {
-        if (result[i] === null) {
-            result[i] = overflow[oIdx++];
-        }
-    }
-
-    return result;
 }
 
 /** Broad position label for the substitutes list. */
@@ -236,9 +55,6 @@ export function PitchView({
     const homeForm = homeFormation || "4-3-3";
     const awayForm = awayFormation || "4-3-3";
 
-    const homePositions = useMemo(() => generateCoordinatesForFormation(homeForm, true), [homeForm]);
-    const awayPositions = useMemo(() => generateCoordinatesForFormation(awayForm, false), [awayForm]);
-
     const homeStarters = useMemo(() => {
         return homeLineup.filter(p => p.starter);
     }, [homeLineup]);
@@ -247,8 +63,8 @@ export function PitchView({
         return awayLineup.filter(p => p.starter);
     }, [awayLineup]);
 
-    const homeAssigned = useMemo(() => assignPlayersToFormation(homeStarters, homeForm), [homeStarters, homeForm]);
-    const awayAssigned = useMemo(() => assignPlayersToFormation(awayStarters, awayForm), [awayStarters, awayForm]);
+    const homeNodes = useMemo(() => computePlayerNodes(homeStarters, homeForm, true), [homeStarters, homeForm]);
+    const awayNodes = useMemo(() => computePlayerNodes(awayStarters, awayForm, false), [awayStarters, awayForm]);
 
     // Split substitutes (who came on) vs Bench (who didn't play)
     const getSubsAndBench = (lineup: LineupPlayer[]) => {
@@ -361,11 +177,9 @@ export function PitchView({
                 {/* Players container */}
                 <div className="absolute inset-0">
                     {/* Home Team */}
-                    {homePositions.map((pos, idx) => {
-                        const player = homeAssigned[idx];
-                        if (!player) return null;
-                        const displayX = isVertical ? (50 - (pos.y - 50) * 1.25) : pos.x;
-                        const displayY = isVertical ? (100 - remapXtoVerticalY(pos.x)) : pos.y;
+                    {homeNodes.map(({ player, x, y }) => {
+                        const displayX = isVertical ? (50 - (y - 50) * 1.25) : x;
+                        const displayY = isVertical ? (100 - remapXtoVerticalY(x)) : y;
                         return (
                             <PlayerNode
                                 key={`home-player-${player.id}`}
@@ -378,11 +192,9 @@ export function PitchView({
                     })}
 
                     {/* Away Team */}
-                    {awayPositions.map((pos, idx) => {
-                        const player = awayAssigned[idx];
-                        if (!player) return null;
-                        const displayX = isVertical ? (50 - (pos.y - 50) * 1.25) : pos.x;
-                        const displayY = isVertical ? (100 - remapXtoVerticalY(pos.x)) : pos.y;
+                    {awayNodes.map(({ player, x, y }) => {
+                        const displayX = isVertical ? (50 - (y - 50) * 1.25) : x;
+                        const displayY = isVertical ? (100 - remapXtoVerticalY(x)) : y;
                         return (
                             <PlayerNode
                                 key={`away-player-${player.id}`}
@@ -431,6 +243,8 @@ function PlayerNode({
     const assists = player.assists ?? 0;
     const yellowCards = player.yellowCards ?? 0;
     const redCards = player.redCards ?? 0;
+    const penaltySaves = player.penaltySaves ?? 0;
+    const penaltyMisses = player.penaltyMisses ?? 0;
     const subOffMin = player.subOffMinute;
 
     return (
@@ -493,15 +307,31 @@ function PlayerNode({
                     </div>
                 )}
 
-                {/* Goal — bottom-right: ball in dark circle */}
-                {goals > 0 && (
-                    <div className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-black/80 border border-white/10 flex items-center justify-center shadow-md z-20" title={`${goals} goal(s)`}>
-                        <span className="text-[12px] leading-none">⚽</span>
-                    </div>
-                )}
-                {ownGoals > 0 && goals === 0 && (
-                    <div className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-black/60 border border-white/10 flex items-center justify-center shadow-md z-20 opacity-60" title="Own goal">
-                        <span className="text-[9px] leading-none">⚽</span>
+                {/* Ball events — bottom-right, stacked side by side, supports multiples.
+                    Goals, own goals, missed penalties and penalty saves all live here. */}
+                {(goals > 0 || ownGoals > 0 || penaltyMisses > 0 || penaltySaves > 0) && (
+                    <div className="absolute -bottom-2 -right-2 flex items-center gap-0.5 z-20">
+                        {Array.from({ length: Math.min(goals, 3) }).map((_, i) => (
+                            <div key={`goal-${i}`} className="w-4 h-4 rounded-full bg-black/80 border border-white/10 flex items-center justify-center shadow-md" title={`${goals} goal(s)`}>
+                                <span className="text-[12px] leading-none">⚽</span>
+                            </div>
+                        ))}
+                        {Array.from({ length: Math.min(ownGoals, 3) }).map((_, i) => (
+                            <div key={`og-${i}`} className="w-4 h-4 rounded-full bg-red-600 border border-white/10 flex items-center justify-center shadow-md" title={`${ownGoals} own goal(s)`}>
+                                <span className="text-[12px] leading-none">⚽</span>
+                            </div>
+                        ))}
+                        {Array.from({ length: Math.min(penaltyMisses, 3) }).map((_, i) => (
+                            <div key={`pm-${i}`} className="relative w-4 h-4 rounded-full bg-black/80 border border-white/10 flex items-center justify-center shadow-md" title={`${penaltyMisses} penalty miss(es)`}>
+                                <span className="text-[11px] leading-none opacity-90">⚽</span>
+                                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-600 border border-black/40 flex items-center justify-center text-white text-[7px] font-extrabold leading-none">✕</span>
+                            </div>
+                        ))}
+                        {Array.from({ length: Math.min(penaltySaves, 3) }).map((_, i) => (
+                            <div key={`ps-${i}`} className="w-4 h-4 rounded-full bg-black/80 border border-white/10 flex items-center justify-center shadow-md" title={`${penaltySaves} penalty save(s)`}>
+                                <span className="text-[10px] leading-none">🧤</span>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>
@@ -568,6 +398,8 @@ function SubPlayerRow({
     const assists = player.assists ?? 0;
     const yellowCards = player.yellowCards ?? 0;
     const redCards = player.redCards ?? 0;
+    const penaltySaves = player.penaltySaves ?? 0;
+    const penaltyMisses = player.penaltyMisses ?? 0;
 
     return (
         <div className={cn(
@@ -609,8 +441,19 @@ function SubPlayerRow({
                         <span className="text-[9px] leading-none">⚽</span>
                     </div>
                 ))}
+                {penaltyMisses > 0 && (
+                    <div className="relative w-4 h-4 rounded-full bg-black/70 border border-white/10 flex items-center justify-center shadow" title={`${penaltyMisses} penalty miss(es)`}>
+                        <span className="text-[9px] leading-none opacity-90">⚽</span>
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-600 border border-black/40 flex items-center justify-center text-white text-[6px] font-extrabold leading-none">✕</span>
+                    </div>
+                )}
+                {penaltySaves > 0 && (
+                    <div className="w-4 h-4 rounded-full bg-black/70 border border-white/10 flex items-center justify-center shadow" title={`${penaltySaves} penalty save(s)`}>
+                        <span className="text-[9px] leading-none">🧤</span>
+                    </div>
+                )}
                 {ownGoals > 0 && (
-                    <div className="w-4 h-4 rounded-full bg-black/50 border border-white/10 flex items-center justify-center shadow opacity-60" title="Own goal">
+                    <div className="w-4 h-4 rounded-full bg-red-600 border border-white/10 flex items-center justify-center shadow" title="Own goal">
                         <span className="text-[9px] leading-none">⚽</span>
                     </div>
                 )}

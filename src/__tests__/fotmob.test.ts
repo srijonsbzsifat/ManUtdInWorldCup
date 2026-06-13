@@ -5,6 +5,7 @@ import {
   extractMotm,
   extractFormation,
   applyFotmobRatings,
+  applyFotmobPositions,
 } from "@/lib/fotmob";
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
@@ -180,5 +181,25 @@ describe("applyFotmobRatings", () => {
     ];
     const result = applyFotmobRatings(lineup, {});
     expect(result[0].rating).toBe(6.5);
+  });
+});
+
+describe("applyFotmobPositions layout coordinates", () => {
+  it("attaches verticalLayout coords to matched starters, leaves unmatched untouched", () => {
+    const espn = [
+      { id: "a", name: "Matheus Cunha", shirtNumber: 9, position: "FW" as const, starter: true, minutesPlayed: 90 },
+      { id: "b", name: "Alisson", shirtNumber: 1, position: "GK" as const, starter: true, minutesPlayed: 90 }, // phantom — not in FotMob
+    ];
+    const fotmobLineup = {
+      starters: [
+        { id: 1, name: "Matheus Cunha", positionId: 115, verticalLayout: { x: 0.5, y: 0.87 } },
+      ],
+      subs: [],
+    };
+    const result = applyFotmobPositions(espn, fotmobLineup, "4-2-3-1");
+    const cunha = result.find((p) => p.id === "a")!;
+    const phantom = result.find((p) => p.id === "b")!;
+    expect(cunha.layout).toEqual({ x: 0.5, y: 0.87 });
+    expect(phantom.layout).toBeUndefined();
   });
 });

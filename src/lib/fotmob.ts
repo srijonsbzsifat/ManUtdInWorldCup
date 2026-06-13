@@ -550,7 +550,20 @@ export function applyFotmobPositions(
         if (fm) {
           const verticalX = fm.verticalLayout?.x ?? 0.5;
           const finalPos = getFotmobPosition(fm.positionId, verticalX) ?? p.position;
-          return { ...p, position: finalPos, captain: fm.isCaptain === true || p.captain };
+          // Capture FotMob's exact pitch coordinates so the formation view can
+          // place this starter precisely instead of re-deriving from the label.
+          const layout =
+            fm.verticalLayout &&
+            typeof fm.verticalLayout.x === "number" &&
+            typeof fm.verticalLayout.y === "number"
+              ? { x: fm.verticalLayout.x, y: fm.verticalLayout.y }
+              : undefined;
+          return {
+            ...p,
+            position: finalPos,
+            captain: fm.isCaptain === true || p.captain,
+            ...(layout && { layout }),
+          };
         }
       } else {
         const fm = subsMap.get(normaliseName(p.name));

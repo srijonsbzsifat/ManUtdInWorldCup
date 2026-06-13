@@ -662,7 +662,20 @@ function mapLineups(
   }
 
   if (home.length === 0 && away.length === 0) return undefined;
-  return { home, away };
+
+  // Defensively drop exact duplicate athlete entries (same id) the feed may
+  // emit. Note: a *phantom extra starting keeper* (a distinct athlete id with a
+  // GK position) is a different ESPN glitch handled at render time in PitchView.
+  const dedupeById = (players: LineupPlayer[]): LineupPlayer[] => {
+    const seen = new Set<string>();
+    return players.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  };
+
+  return { home: dedupeById(home), away: dedupeById(away) };
 }
 
 /**

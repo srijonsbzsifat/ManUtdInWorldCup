@@ -114,6 +114,12 @@ export interface LineupPlayer {
   isUnitedPlayer?: boolean;
   /** Reference to our UnitedPlayer.id when applicable. */
   unitedPlayerId?: string;
+  /**
+   * FotMob pitch coordinates (from `verticalLayout`) for accurate formation
+   * placement. x: 0 = team's right touchline → 1 = left. y: 0 = own goal → 1 =
+   * attacking third. Only present for starters matched to FotMob lineup data.
+   */
+  layout?: { x: number; y: number };
 }
 
 export interface MatchEvent {

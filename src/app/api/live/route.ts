@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCachedFixtures } from "@/lib/fixture-cache";
+import { fetchMatchDetails } from "@/lib/espn";
+import { runWithConcurrencyLimit } from "@/lib/utils";
 import { isOurNationTeam } from "@/lib/players";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +22,16 @@ export async function GET() {
         (isOurNationTeam(m.home) || isOurNationTeam(m.away))
     );
 
+    // Enrich the (few) in-play matches with lineups/ratings/events so the live
+    // cards can show which United players are on the pitch and their live
+    // ratings. Concurrency-limited; fall back to the scoreboard match on failure
+    // so a card never disappears. fetchMatchDetails bypasses the FotMob cache for
+    // live matches, so ratings refresh as the game progresses.
+    const results = await runWithConcurrencyLimit(live, (m) => fetchMatchDetails(m), 4);
+    const enriched = results.map((r, i) => (r.status === "fulfilled" ? r.value : live[i]));
+
     return NextResponse.json(
-      { count: live.length, live, lastUpdated: new Date().toISOString() },
+      { count: enriched.length, live: enriched, lastUpdated: new Date().toISOString() },
       { headers: { "Cache-Control": "s-maxage=15, stale-while-revalidate=15" } }
     );
   } catch (err) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchMatchDetailsById, fetchMatchDetails, COMPETITION_SLUGS } from "@/lib/espn";
+import { fetchMatchDetailsById, fetchMatchDetails, getMatchSummary, summaryToMatch, COMPETITION_SLUGS } from "@/lib/espn";
 import { fetchFotmobMatchId, fetchFotmobMatchData, applyFotmobRatings, applyFotmobPositions } from "@/lib/fotmob";
 import { normaliseName } from "@/lib/players";
 
@@ -41,6 +41,23 @@ export async function GET(
 
     if (!detailed) {
       return NextResponse.json({ error: "Match not found" }, { status: 404 });
+    }
+
+    // For live matches the fast path used getMatchSummary with isLive=false (revalidate=60).
+    // Re-call with isLive=true so Next.js adopts the shorter 15s revalidation for this URL,
+    // ensuring the ESPN data cache expires every 15 s on subsequent requests.
+    if (detailed.status === "IN_PLAY" || detailed.status === "PAUSED") {
+      const liveSlug = knownSlug ?? detailed.espnSlug ?? "fifa.world";
+      const liveSummary = await getMatchSummary(params.id, liveSlug, true, false);
+      if (liveSummary) {
+        const comp = COMPETITION_SLUGS.find((c) => c.slug === liveSlug);
+        const fresh = summaryToMatch(liveSummary, comp ?? {
+          slug: liveSlug,
+          matchType: detailed.matchType,
+          name: detailed.competition.name,
+        });
+        if (fresh) detailed = { ...fresh, id: params.id };
+      }
     }
 
     // -- FotMob enrichment (ratings / positions / MOTM) --

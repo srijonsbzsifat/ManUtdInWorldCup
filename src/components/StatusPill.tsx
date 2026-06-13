@@ -5,6 +5,7 @@ export function StatusPill({ status, minute }: { status: MatchStatus; minute?: n
   const { text, cls, dot } = (() => {
     switch (status) {
       case "IN_PLAY":
+        if (minute === "HT") return { text: "HT", cls: "bg-yellow-500/15 text-yellow-300 border border-yellow-500/30", dot: false };
         return { text: typeof minute === "number" ? `${minute}'` : "LIVE", cls: "bg-red-500/15 text-red-300 border border-red-500/30", dot: true };
       case "PAUSED":
         return { text: "HT", cls: "bg-yellow-500/15 text-yellow-300 border border-yellow-500/30", dot: false };

@@ -48,12 +48,13 @@ function mapStatus(raw: any): { status: MatchStatus; minute: number | string | n
 
   let status: MatchStatus = "SCHEDULED";
   if (state === "PRE" || id === "1" || id === "0") status = "SCHEDULED";
-  else if (state === "IN" || id === "2") status = "IN_PLAY";
   else if (state === "POST" || id === "3") status = "FINISHED";
   else if (description.includes("postponed") || detail.includes("postponed")) status = "POSTPONED";
   else if (description.includes("suspended")) status = "SUSPENDED";
   else if (description.includes("canceled") || description.includes("cancelled")) status = "CANCELED";
+  // Check halftime BEFORE IN_PLAY: ESPN sometimes sends state="IN" during the HT break.
   else if (description.includes("halftime") || detail.includes("halftime") || shortDetail.includes("ht")) status = "PAUSED";
+  else if (state === "IN" || id === "2") status = "IN_PLAY";
 
   // Extract current minute if available.
   let minute: number | string | null = null;

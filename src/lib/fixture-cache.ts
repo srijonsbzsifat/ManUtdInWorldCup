@@ -7,7 +7,8 @@ import type { Match } from "@/types";
  * - Future / mixed ranges: medium TTL
  * - Empty results: very short TTL — likely a transient ESPN failure, retry soon
  */
-const FIXTURE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min for active ranges
+const FIXTURE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min for future ranges
+const LIVE_RESULT_TTL_MS = 15_000;            // 15 s — range spans an in-play match
 const EMPTY_RESULT_TTL_MS = 15_000;           // 15 s — don't poison the cache
 const MAX_CACHE_ENTRIES = 50;
 
@@ -62,11 +63,20 @@ export async function getCachedFixtures(
         const isFuture = dateRange.start.getTime() > now;
         const type = isPast ? "past" : isFuture ? "future" : "live";
 
-        // Empty results get a short TTL so transient ESPN failures don't poison
-        // the cache for the full 10 minutes.
+        // TTL by match-state classification:
+        //   - empty:  short, so transient ESPN failures don't poison the cache
+        //   - past:   long, finished fixtures never change
+        //   - live:   short, the range spans a match that may be in play right
+        //             now — score/minute/status must stay fresh everywhere, not
+        //             just on the dedicated /live route
+        //   - future: medium, lineups may appear but nothing is in flux
         const ttl = fixtures.length === 0
             ? EMPTY_RESULT_TTL_MS
-            : overrideTtlMs ?? (isPast ? 30 * 60 * 1000 : FIXTURE_CACHE_TTL_MS);
+            : overrideTtlMs ?? (
+                type === "past" ? 30 * 60 * 1000
+                : type === "live" ? LIVE_RESULT_TTL_MS
+                : FIXTURE_CACHE_TTL_MS
+            );
 
         fixtureCache.set(key, { expiresAt: Date.now() + ttl, fixtures, type });
         return fixtures;

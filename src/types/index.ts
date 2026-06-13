@@ -47,7 +47,6 @@ export interface UnitedPlayer {
 
 export type MatchStatus =
   | "SCHEDULED"
-  | "TIMED"
   | "IN_PLAY"
   | "PAUSED"
   | "FINISHED"

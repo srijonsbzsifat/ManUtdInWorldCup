@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchMatchDetails } from "@/lib/espn";
-import { NATIONAL_TEAMS } from "@/lib/players";
+import { isOurNationTeam } from "@/lib/players";
 import { computeTournamentStats, topPerformers, getStatsScope, WC_START } from "@/lib/aggregator";
 import { getCachedFixtures } from "@/lib/fixture-cache";
 import { runWithConcurrencyLimit } from "@/lib/utils";
@@ -20,32 +20,26 @@ export async function GET() {
     const end = new Date(today);
 
     const fixtures = await getCachedFixtures({ start, end });
-    const nationCodes = new Set(NATIONAL_TEAMS.map((t) => t.code));
     const relevant = fixtures.filter(
-      (m) => nationCodes.has(m.home.code) || nationCodes.has(m.away.code)
+      (m) => isOurNationTeam(m.home) || isOurNationTeam(m.away)
     );
 
     // Only fetch details for matches that can actually contribute stats:
-    // SCHEDULED/TIMED matches have no lineups yet, so skip them entirely.
+    // SCHEDULED matches have no lineups yet, so skip them entirely.
+    // Scoreboard fixtures never carry lineups, so every analysable match needs
+    // hydration — finished ones are served from the enriched-match cache inside
+    // fetchMatchDetails, so repeated requests stay cheap.
     const analysable = relevant.filter(
       (m) => m.status === "FINISHED" || m.status === "IN_PLAY" || m.status === "PAUSED"
     );
 
-    // Dedup: skip fetchMatchDetails for matches that already have lineups
-    // from the scoreboard endpoint (e.g. FINISHED matches from a previous
-    // fetch that were enriched and cached).  Save an HTTP round-trip.
-    const needDetails = analysable.filter((m) => !m.lineups);
-    const skipDetails = analysable.filter((m) => m.lineups);
-    const cached = skipDetails;
-
-    const results = await runWithConcurrencyLimit(needDetails, (m) => fetchMatchDetails(m), 4);
+    const results = await runWithConcurrencyLimit(analysable, (m) => fetchMatchDetails(m), 4);
     const failed = results.filter((r) => r.status === "rejected").length;
     if (failed > 0) console.warn(`stats: ${failed}/${results.length} match detail fetches failed`);
-    const fresh = results
+    const allDetailed = results
       .filter((r): r is PromiseFulfilledResult<Match> => r.status === "fulfilled")
       .map((r) => r.value);
 
-    const allDetailed = [...cached, ...fresh];
     const stats = computeTournamentStats(allDetailed);
 
     return NextResponse.json(
@@ -62,7 +56,7 @@ export async function GET() {
   } catch (err) {
     console.error("stats failed", err);
     return NextResponse.json(
-      { error: "Failed to compute stats", detail: String(err) },
+      { error: "Failed to compute stats" },
       { status: 500 }
     );
   }

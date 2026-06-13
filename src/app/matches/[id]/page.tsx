@@ -1,6 +1,7 @@
 "use client";
 import useSWR from "swr";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { Match, MatchEvent } from "@/types";
 import { StatusPill } from "@/components/StatusPill";
 import { MatchLineup } from "@/components/MatchLineup";
@@ -10,8 +11,9 @@ import { cn, eventIcon, formatDate, formatTimeLocal } from "@/lib/utils";
 
 export default function MatchPage({ params }: { params: { id: string } }) {
   const { id } = params;
+  const slug = useSearchParams().get("slug");
   const { data, error, isLoading } = useSWR<{ match: Match }>(
-    `/api/matches/${id}`,
+    slug ? `/api/matches/${id}?slug=${slug}` : `/api/matches/${id}`,
     { refreshInterval: (d) => d?.match?.status === "FINISHED" ? 0 : 15_000 }
   );
 
@@ -86,7 +88,7 @@ function MatchHeader({ match }: { match: Match }) {
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-8 py-4">
         <TeamDisplay team={match.home} align="right" />
         <div className="text-center">
-          {match.status === "SCHEDULED" || match.status === "TIMED" ? (
+          {match.status === "SCHEDULED" ? (
             <div>
               <div className="text-2xl sm:text-4xl font-extrabold tabular-nums">
                 {formatTimeLocal(match.kickoff)}

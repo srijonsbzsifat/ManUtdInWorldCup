@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPlayerById } from "@/lib/players";
+import { getPlayerById, findNationForTeam } from "@/lib/players";
 import { fetchMatchDetails } from "@/lib/espn";
 import { getCachedFixtures } from "@/lib/fixture-cache";
 import { computePlayerPerformances, computeTournamentStats, getStatsScope } from "@/lib/aggregator";
@@ -30,9 +30,11 @@ export async function GET(
     // Hydrate details (lineups, events) for every match involving this player's
     // national team - the summary endpoint is heavier so we limit it to the
     // matches we care about.
-    const teamMatchSlugs = fixtures.filter(
-      (m) => m.home.code === player.nation.code || m.away.code === player.nation.code
-    );
+    const involvesPlayerNation = (m: { home: { code: string; name: string }; away: { code: string; name: string } }) =>
+      findNationForTeam(m.home)?.code === player.nation.code ||
+      findNationForTeam(m.away)?.code === player.nation.code;
+
+    const teamMatchSlugs = fixtures.filter(involvesPlayerNation);
     const detailedResults = await runWithConcurrencyLimit(
       teamMatchSlugs,
       (m) => m.lineups ? Promise.resolve(m) : fetchMatchDetails(m),
@@ -55,9 +57,9 @@ export async function GET(
     const nextFixtures = fixtures
       .filter(
         (m) =>
-          (m.status === "SCHEDULED" || m.status === "TIMED") &&
+          m.status === "SCHEDULED" &&
           new Date(m.kickoff) >= now &&
-          (m.home.code === player.nation.code || m.away.code === player.nation.code)
+          involvesPlayerNation(m)
       )
       .slice(0, 3);
 
@@ -75,7 +77,7 @@ export async function GET(
   } catch (err) {
     console.error("player detail failed", err);
     return NextResponse.json(
-      { error: "Failed to load player detail", detail: String(err) },
+      { error: "Failed to load player detail" },
       { status: 500 }
     );
   }

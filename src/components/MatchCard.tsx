@@ -23,7 +23,7 @@ function MatchCard({ match, compact = false }: { match: Match; compact?: boolean
 
   return (
     <Link
-      href={`/matches/${match.id}`}
+      href={match.espnSlug ? `/matches/${match.id}?slug=${match.espnSlug}` : `/matches/${match.id}`}
       className="glass glass-hover p-4 block group"
     >
       <div className="flex items-center justify-between gap-2 mb-3">
@@ -41,7 +41,7 @@ function MatchCard({ match, compact = false }: { match: Match; compact?: boolean
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <TeamColumn team={match.home} align="right" highlight={homeHasUnitedPlayer} />
         <div className="text-center px-2 min-w-[60px]">
-          {match.status === "SCHEDULED" || match.status === "TIMED" ? (
+          {match.status === "SCHEDULED" ? (
             <div>
               <div className="text-[11px] text-white/50 font-medium">
                 {formatDate(match.kickoff)}

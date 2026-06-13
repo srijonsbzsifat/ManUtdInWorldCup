@@ -257,3 +257,60 @@ export function matchUnitedPlayer(name: string): UnitedPlayer | undefined {
 export const NATIONAL_TEAMS = Array.from(
   new Map(UNITED_PLAYERS.map((p) => [p.nation.id, p.nation])).values()
 ).sort((a, b) => a.name.localeCompare(b.name));
+
+export type NationalTeam = UnitedPlayer["nation"];
+
+const NATION_BY_CODE = new Map(NATIONAL_TEAMS.map((t) => [t.code, t]));
+
+/**
+ * ESPN's team `abbreviation` is the primary key we match nations on, but it can
+ * drift (e.g. a feed using "TUR" vs "TRY", or "CIV" vs "IVC").  Map the
+ * normalised team *names* ESPN is likely to use back to our 3-letter codes so a
+ * single abbreviation change can't make a whole nation's fixtures vanish.
+ */
+const NATION_NAME_TO_CODE: Record<string, string> = {
+  turkiye: "TUR",
+  turkey: "TUR",
+  belgium: "BEL",
+  portugal: "POR",
+  morocco: "MAR",
+  argentina: "ARG",
+  brazil: "BRA",
+  uruguay: "URU",
+  england: "ENG",
+  scotland: "SCO",
+  "cote divoire": "CIV",
+  "cote d ivoire": "CIV",
+  "ivory coast": "CIV",
+};
+
+/**
+ * Resolve a match team to one of our national teams, by ESPN abbreviation
+ * first and by (normalised) name as a fallback.  When the name fallback rescues
+ * a team whose code didn't match, we log it — that's a signal an ESPN code has
+ * drifted and the hardcoded `code` may need updating.
+ */
+export function findNationForTeam(team: { code?: string | null; name?: string | null }): NationalTeam | undefined {
+  const code = String(team.code ?? "").toUpperCase();
+  const byCode = NATION_BY_CODE.get(code);
+  if (byCode) return byCode;
+
+  const mappedCode = NATION_NAME_TO_CODE[normaliseName(team.name ?? "")];
+  if (mappedCode) {
+    const byName = NATION_BY_CODE.get(mappedCode);
+    if (byName) {
+      console.warn(
+        `players: nation matched by name fallback — ESPN code "${code || "(none)"}" ` +
+        `did not match expected "${mappedCode}" for team "${team.name ?? ""}". ` +
+        `Consider updating NATIONAL_TEAMS if this persists.`
+      );
+      return byName;
+    }
+  }
+  return undefined;
+}
+
+/** True if a match team is one of the nations our United players represent. */
+export function isOurNationTeam(team: { code?: string | null; name?: string | null }): boolean {
+  return Boolean(findNationForTeam(team));
+}

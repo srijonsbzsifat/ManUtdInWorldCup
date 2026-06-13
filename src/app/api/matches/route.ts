@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { fetchMatchDetails } from "@/lib/espn";
 import { getCachedFixtures } from "@/lib/fixture-cache";
 import { runWithConcurrencyLimit } from "@/lib/utils";
-import { NATIONAL_TEAMS } from "@/lib/players";
+import { NATIONAL_TEAMS, isOurNationTeam, findNationForTeam } from "@/lib/players";
 import type { Match } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -99,23 +99,31 @@ export async function GET(req: Request) {
   try {
     let matches = await getCachedFixtures({ start, end });
 
-    // Filter to only matches involving one of our nations.
-    const nationCodes = new Set(NATIONAL_TEAMS.map((t) => t.code));
+    // Filter to only matches involving one of our nations (by ESPN code, with a
+    // name-based fallback so a single abbreviation drift can't hide fixtures).
     matches = matches.filter(
-      (m) => nationCodes.has(m.home.code) || nationCodes.has(m.away.code)
+      (m) => isOurNationTeam(m.home) || isOurNationTeam(m.away)
     );
 
     if (nation) {
-      const code = nation.toUpperCase();
-      matches = matches.filter(
-        (m) => m.home.code === code || m.away.code === code
+      // Resolve the requested nation param (id or code) to its canonical code,
+      // then compare via the same fallback-aware matcher.
+      const requested = NATIONAL_TEAMS.find(
+        (t) => t.id === nation || t.code === nation.toUpperCase()
       );
+      if (requested) {
+        matches = matches.filter(
+          (m) =>
+            findNationForTeam(m.home)?.code === requested.code ||
+            findNationForTeam(m.away)?.code === requested.code
+        );
+      }
     }
 
     if (status === "live") {
       matches = matches.filter((m) => m.status === "IN_PLAY" || m.status === "PAUSED");
     } else if (status === "upcoming") {
-      matches = matches.filter((m) => m.status === "SCHEDULED" || m.status === "TIMED");
+      matches = matches.filter((m) => m.status === "SCHEDULED");
     } else if (status === "finished") {
       matches = matches.filter((m) => m.status === "FINISHED");
     }
@@ -147,7 +155,7 @@ export async function GET(req: Request) {
   } catch (err) {
     console.error("matches fetch failed", err);
     return NextResponse.json(
-      { error: "Failed to fetch matches", detail: String(err) },
+      { error: "Failed to fetch matches" },
       { status: 500 }
     );
   }

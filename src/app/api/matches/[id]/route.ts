@@ -1,18 +1,24 @@
 import { NextResponse } from "next/server";
-import { fetchMatchDetailsById, fetchMatchDetails } from "@/lib/espn";
+import { fetchMatchDetailsById, fetchMatchDetails, COMPETITION_SLUGS } from "@/lib/espn";
 import { fetchFotmobMatchId, fetchFotmobMatchData, applyFotmobRatings, applyFotmobPositions } from "@/lib/fotmob";
 import { normaliseName } from "@/lib/players";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
   try {
     // Fast path: try to fetch the summary directly by ID, without hitting
-    // the scoreboard waterfall (which fetches 8 competition endpoints).
-    let detailed = await fetchMatchDetailsById(params.id);
+    // the scoreboard waterfall (which fetches every competition endpoint).
+    // When the caller knows the ESPN slug (threaded from the matches list),
+    // pass it so we skip the trial-and-error slug loop entirely.
+    // Only honour a slug we recognise — it is interpolated into the ESPN URL,
+    // so an arbitrary value must never reach the fetch.
+    const slugParam = new URL(req.url).searchParams.get("slug") ?? undefined;
+    const knownSlug = COMPETITION_SLUGS.some((c) => c.slug === slugParam) ? slugParam : undefined;
+    let detailed = await fetchMatchDetailsById(params.id, knownSlug);
 
     if (!detailed) {
       // Fallback: search through fixtures list
@@ -139,7 +145,7 @@ export async function GET(
   } catch (err) {
     console.error("match detail failed", err);
     return NextResponse.json(
-      { error: "Failed to load match", detail: String(err) },
+      { error: "Failed to load match" },
       { status: 500 }
     );
   }

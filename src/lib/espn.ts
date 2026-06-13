@@ -484,17 +484,21 @@ function mapEvents(
     }
 
     if (type.includes("half") || type.includes("end of period")) {
-      const isHT = minVal <= 45;
-      const eventKey = `period-${isHT ? "half_time" : "full_time"}-${minVal}-${stopVal}`;
+      // Period breaks fire at 45' (HT), 90' (FT in regulation), 105' (extra-time
+      // half-time) and 120' (FT after extra time).  Treat 45' and ~105' as
+      // half-time breaks; everything else (90', 120') is full time.  Using
+      // `<= 45` alone mislabelled the end of the first extra-time period as FT.
+      const isHalfTimeBreak = minVal <= 45 || (minVal > 90 && minVal <= 105);
+      const eventKey = `period-${isHalfTimeBreak ? "half_time" : "full_time"}-${minVal}-${stopVal}`;
       if (seenKeys.has(eventKey)) continue;
       seenKeys.add(eventKey);
 
       events.push({
         id: String(play?.id ?? `evt-${minute}-ht`),
-        minute: minVal || (isHT ? 45 : 90),
-        type: isHT ? "half_time" : "full_time",
+        minute: minVal || (isHalfTimeBreak ? 45 : 90),
+        type: isHalfTimeBreak ? "half_time" : "full_time",
         team: "home",
-        detail: isHT ? "Half time" : "Full time",
+        detail: isHalfTimeBreak ? "Half time" : "Full time",
       });
       continue;
     }
@@ -1020,10 +1024,50 @@ export async function fetchAllFixtures(
   return all;
 }
 
+/**
+ * Fully-enriched FINISHED matches never change — their lineups, ratings, events
+ * and MOTM are fixed once the game ends.  Cache the assembled Match by id so the
+ * stats and player-detail aggregations (which re-hydrate the same finished
+ * fixtures on every request) skip the ESPN summary fetch, the FotMob scrape, and
+ * all the mapping work.
+ */
+const ENRICHED_FINISHED_TTL_MS = 60 * 60 * 1000; // 1 hour
+const ENRICHED_FINISHED_MAX = 100;
+const enrichedFinishedCache = new Map<string, { exp: number; match: Match }>();
+
+function getEnrichedFinished(id: string): Match | undefined {
+  const e = enrichedFinishedCache.get(id);
+  if (!e) return undefined;
+  if (Date.now() > e.exp) {
+    enrichedFinishedCache.delete(id);
+    return undefined;
+  }
+  return e.match;
+}
+
+function setEnrichedFinished(id: string, match: Match): void {
+  enrichedFinishedCache.set(id, { exp: Date.now() + ENRICHED_FINISHED_TTL_MS, match });
+  if (enrichedFinishedCache.size > ENRICHED_FINISHED_MAX) {
+    let i = 0;
+    const drop = enrichedFinishedCache.size - ENRICHED_FINISHED_MAX;
+    for (const k of enrichedFinishedCache.keys()) {
+      if (i >= drop) break;
+      enrichedFinishedCache.delete(k);
+      i++;
+    }
+  }
+}
+
 export async function fetchMatchDetails(match: Match): Promise<Match> {
   const slug = match.espnSlug ?? "fifa.friendly";
   const isLive = match.status === "IN_PLAY" || match.status === "PAUSED";
   const isFinished = match.status === "FINISHED";
+
+  // Finished matches are immutable — serve the enriched copy if we have one.
+  if (isFinished) {
+    const cached = getEnrichedFinished(match.id);
+    if (cached) return cached;
+  }
 
   // Step 1: Kick off both ESPN summary and FotMob lookup in parallel.
   // FotMob lookup depends only on team names and date, not on lineups, so
@@ -1098,6 +1142,11 @@ export async function fetchMatchDetails(match: Match): Promise<Match> {
     } catch {
       // Best-effort – fall back to computed ratings.
     }
+
+  // Cache the immutable finished result (only once it actually has lineups).
+  if (isFinished && enriched.lineups) {
+    setEnrichedFinished(match.id, enriched);
+  }
 
   return enriched;
 }

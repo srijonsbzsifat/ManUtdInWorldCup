@@ -112,7 +112,7 @@ export async function GET() {
   } catch (err) {
     console.error("groups fetch failed", err);
     return NextResponse.json(
-      { error: "Failed to fetch group standings", detail: String(err) },
+      { error: "Failed to fetch group standings" },
       { status: 500 }
     );
   }

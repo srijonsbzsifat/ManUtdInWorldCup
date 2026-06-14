@@ -82,7 +82,7 @@ function MatchHeader({ match }: { match: Match }) {
           {match.competition.name}
           {match.venue && <> · {match.venue}{match.city ? `, ${match.city}` : ""}</>}
         </div>
-        <StatusPill status={match.status} minute={match.minute} />
+        <StatusPill status={match.status} minute={match.minute} stoppage={match.stoppage} />
       </div>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-8 py-4">
@@ -106,7 +106,7 @@ function MatchHeader({ match }: { match: Match }) {
                 {match.status === "FINISHED"
                   ? "Full time"
                   : match.minute != null && match.minute !== "HT"
-                    ? `${match.minute}'`
+                    ? `${match.minute}${match.stoppage ? `+${match.stoppage}` : ""}'`
                     : match.minute === "HT"
                       ? "HT"
                       : "LIVE"}

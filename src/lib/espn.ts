@@ -39,12 +39,16 @@ const COMPETITION_SLUGS = [
 /* Mapping helpers                                                            */
 /* -------------------------------------------------------------------------- */
 
-function mapStatus(raw: any): { status: MatchStatus; minute: number | string | null } {
-  const state = String(raw?.state ?? raw?.name ?? "").toUpperCase();
-  const id = String(raw?.id ?? "").toUpperCase();
-  const description = String(raw?.description ?? "").toLowerCase();
-  const detail = String(raw?.detail ?? "").toLowerCase();
-  const shortDetail = String(raw?.shortDetail ?? "").toLowerCase();
+function mapStatus(raw: any): { status: MatchStatus; minute: number | string | null; stoppage?: number } {
+  // Callers may pass either the full `status` object (which carries the live
+  // `displayClock`, e.g. "45'+3'") or just `status.type`.  Support both: use
+  // `type` for the state/description fields and the parent for the clock.
+  const type = raw?.type ?? raw;
+  const state = String(type?.state ?? type?.name ?? "").toUpperCase();
+  const id = String(type?.id ?? "").toUpperCase();
+  const description = String(type?.description ?? "").toLowerCase();
+  const detail = String(type?.detail ?? "").toLowerCase();
+  const shortDetail = String(type?.shortDetail ?? "").toLowerCase();
 
   let status: MatchStatus = "SCHEDULED";
   if (state === "PRE" || id === "1" || id === "0") status = "SCHEDULED";
@@ -55,20 +59,27 @@ function mapStatus(raw: any): { status: MatchStatus; minute: number | string | n
   else if (description.includes("canceled") || description.includes("cancelled")) status = "CANCELED";
   else if (description.includes("halftime") || detail.includes("halftime") || shortDetail.includes("ht")) status = "PAUSED";
 
-  // Extract current minute if available.
+  // Extract current minute (and any added/stoppage time) if available.
   let minute: number | string | null = null;
+  let stoppage: number | undefined;
   if (status === "IN_PLAY" || status === "PAUSED") {
     if (status === "PAUSED") minute = "HT";
     else {
-      const match = /(\d+)/.exec(raw?.displayClock || raw?.clock || raw?.detail || raw?.shortDetail || "");
-      if (match) minute = parseInt(match[1], 10);
+      // ESPN's `displayClock` (e.g. "45'+3'") lives on the status object and is
+      // the most reliable source for both the base minute and added time.  The
+      // numeric `clock` is seconds, so it is not used for minute extraction.
+      const clockStr = raw?.displayClock ?? type?.displayClock ?? type?.shortDetail ?? type?.detail ?? "";
+      const base = parseClockMinute(clockStr);
+      if (base != null) minute = base;
       else if (typeof raw?.clock === "number") minute = raw.clock;
+      const stop = parseStoppage(clockStr);
+      if (stop && stop > 0) stoppage = stop;
     }
   } else if (status === "FINISHED") {
     minute = "FT";
   }
 
-  return { status, minute };
+  return { status, minute, stoppage };
 }
 
 function mapTeam(team: any, homeAway: "home" | "away"): MatchTeam {
@@ -207,7 +218,7 @@ export function summaryToMatch(
   const away = competition.competitors?.find((c: any) => c.homeAway === "away");
   if (!home || !away) return null;
 
-  const { status, minute } = mapStatus(competition.status?.type);
+  const { status, minute, stoppage } = mapStatus(competition.status);
 
   const match: Match = {
     id: String(competition.id ?? summary.header?.id ?? ""),
@@ -222,6 +233,7 @@ export function summaryToMatch(
     })(),
     status,
     minute,
+    stoppage,
     home: mapTeam(home.team, "home"),
     away: mapTeam(away.team, "away"),
     score: { home: parseScore(home.score), away: parseScore(away.score) },
@@ -876,7 +888,7 @@ export async function listCompetitionFixtures(
     const home = comp.competitors?.find((c: any) => c.homeAway === "home");
     const away = comp.competitors?.find((c: any) => c.homeAway === "away");
     if (!home || !away) continue;
-    const { status, minute } = mapStatus(comp.status?.type);
+    const { status, minute, stoppage } = mapStatus(comp.status);
 
     matches.push({
       id: String(evt.id ?? comp.id),
@@ -884,6 +896,7 @@ export async function listCompetitionFixtures(
       kickoff: evt.date ?? comp.date,
       status,
       minute,
+      stoppage,
       home: mapTeam(home.team, "home"),
       away: mapTeam(away.team, "away"),
       score: { home: parseScore(home.score), away: parseScore(away.score) },

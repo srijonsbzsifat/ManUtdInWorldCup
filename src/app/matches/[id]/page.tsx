@@ -105,10 +105,10 @@ function MatchHeader({ match }: { match: Match }) {
               <div className="text-[10px] text-white/50 mt-1 uppercase">
                 {match.status === "FINISHED"
                   ? "Full time"
-                  : match.minute != null && match.minute !== "HT"
-                    ? `${match.minute}${match.stoppage ? `+${match.stoppage}` : ""}'`
-                    : match.minute === "HT"
-                      ? "HT"
+                  : match.status === "PAUSED" || match.minute === "HT"
+                    ? "Half time"
+                    : match.minute != null
+                      ? `${match.minute}${match.stoppage ? `+${match.stoppage}` : ""}'`
                       : "LIVE"}
               </div>
             </div>

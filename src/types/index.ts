@@ -162,6 +162,8 @@ export interface Match {
   kickoff: string;       // ISO timestamp
   status: MatchStatus;
   minute: MatchMinute;
+  /** Added/stoppage time for the live clock, e.g. 3 means "45+3'". */
+  stoppage?: number;
   home: MatchTeam;
   away: MatchTeam;
   score: MatchScore;

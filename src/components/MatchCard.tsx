@@ -35,7 +35,7 @@ function MatchCard({ match, compact = false }: { match: Match; compact?: boolean
             </span>
           )}
         </div>
-        <StatusPill status={match.status} minute={match.minute} />
+        <StatusPill status={match.status} minute={match.minute} stoppage={match.stoppage} />
       </div>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
@@ -59,7 +59,7 @@ function MatchCard({ match, compact = false }: { match: Match; compact?: boolean
                 {match.status === "FINISHED"
                   ? "Full time"
                   : match.minute != null && match.minute !== "HT"
-                    ? `${match.minute}'`
+                    ? `${match.minute}${match.stoppage ? `+${match.stoppage}` : ""}'`
                     : match.minute === "HT"
                       ? "HT"
                       : "LIVE"}

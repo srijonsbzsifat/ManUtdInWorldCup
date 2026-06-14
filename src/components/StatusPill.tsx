@@ -1,11 +1,11 @@
 import { cn } from "@/lib/utils";
 import type { MatchStatus } from "@/types";
 
-export function StatusPill({ status, minute }: { status: MatchStatus; minute?: number | string | null }) {
+export function StatusPill({ status, minute, stoppage }: { status: MatchStatus; minute?: number | string | null; stoppage?: number }) {
   const { text, cls, dot } = (() => {
     switch (status) {
       case "IN_PLAY":
-        return { text: typeof minute === "number" ? `${minute}'` : "LIVE", cls: "bg-red-500/15 text-red-300 border border-red-500/30", dot: true };
+        return { text: typeof minute === "number" ? `${minute}${stoppage ? `+${stoppage}` : ""}'` : "LIVE", cls: "bg-red-500/15 text-red-300 border border-red-500/30", dot: true };
       case "PAUSED":
         return { text: "HT", cls: "bg-yellow-500/15 text-yellow-300 border border-yellow-500/30", dot: false };
       case "FINISHED":

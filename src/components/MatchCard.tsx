@@ -144,7 +144,7 @@ function PlayerChip({ player }: { player: LineupPlayer }) {
         {player.shirtNumber || "•"}
       </span>
       <span className="text-white/80 text-[11px] truncate max-w-[80px]">
-        {player.name.split(" ").pop()}
+        {player.displayName ?? player.name.split(" ").pop()}
       </span>
       {player.rating !== null && player.rating !== undefined && (
         <span

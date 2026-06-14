@@ -77,6 +77,9 @@ export interface MatchTeam {
 export interface LineupPlayer {
   id: string;
   name: string;
+  /** FotMob's curated short/display name (shortName → lastName). Falls back to
+   *  the last token of `name` at render time when absent. */
+  displayName?: string;
   shirtNumber: number;
   position: PlayerPosition;
   starter: boolean;
@@ -189,6 +192,9 @@ export interface Match {
   stage?: string;
   /** Team formations if available (e.g., "4-3-3"). */
   formation?: { home: string | null; away: string | null };
+  /** True when lineups/formation are a FotMob PREDICTED XI for a not-yet-started
+   *  match (no confirmed ESPN starters). Drives the "Predicted Lineup" heading. */
+  lineupPredicted?: boolean;
 }
 
 export interface PlayerTournamentStats {

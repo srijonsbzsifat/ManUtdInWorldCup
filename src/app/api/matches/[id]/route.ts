@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchMatchDetailsById, fetchMatchDetails, COMPETITION_SLUGS } from "@/lib/espn";
-import { fetchFotmobMatchId, fetchFotmobMatchData, applyFotmobRatings, applyFotmobPositions } from "@/lib/fotmob";
+import { fetchFotmobMatchId, fetchFotmobMatchData, applyFotmobRatings, applyFotmobPositions, buildLineupsFromFotmob, isPredictedLineupType } from "@/lib/fotmob";
 import { normaliseName } from "@/lib/players";
 
 export const dynamic = "force-dynamic";
@@ -113,6 +113,53 @@ export async function GET(
         }
       } catch {
         // Best-effort – fall back to ESPN ratings.
+      }
+    }
+
+    // -- Predicted lineup for upcoming fixtures (FotMob) --
+    // For SCHEDULED matches with no confirmed ESPN XI, ESPN has no roster, so the
+    // block above can't run. Build the lineup directly from FotMob's PREDICTED XI
+    // instead, so upcoming fixtures show a formation pitch view like FotMob does.
+    // Gated to a near-kickoff window (FotMob only publishes predicted XIs close to
+    // the match) and uses the cached FotMob fetch so the 15s SWR poll is cheap.
+    const PREDICTED_WINDOW_MS = 1000 * 60 * 60 * 24 * 2; // 2 days
+    if (
+      detailed.status === "SCHEDULED" &&
+      !hasConfirmedXI &&
+      !detailed.lineups
+    ) {
+      const ms = new Date(detailed.kickoff).getTime() - Date.now();
+      if (ms > 0 && ms <= PREDICTED_WINDOW_MS) {
+        try {
+          const fotmobId = await fetchFotmobMatchId(
+            detailed.kickoff,
+            detailed.home.name,
+            detailed.away.name
+          );
+          if (fotmobId) {
+            // Within the last hour the official XI gets published and FotMob
+            // flips lineupType predicted → confirmed. Bypass the 24h cache in
+            // that window so a stale predicted result can't mask the confirmed
+            // lineup. Earlier than that, predicted XIs change slowly → cache.
+            const CONFIRM_WINDOW_MS = 1000 * 60 * 60; // 1 hour
+            const bypassCache = ms <= CONFIRM_WINDOW_MS;
+            const fotmobData = await fetchFotmobMatchData(fotmobId, bypassCache);
+            const built = fotmobData?.lineup ? buildLineupsFromFotmob(fotmobData.lineup) : null;
+            if (
+              built &&
+              fotmobData?.formation &&
+              (fotmobData.formation.home || fotmobData.formation.away)
+            ) {
+              detailed.lineups = built;
+              detailed.formation = fotmobData.formation;
+              // Honour FotMob's own flag: once it reports a confirmed XI, drop the
+              // "Predicted" label so the confirmed lineup takes precedence.
+              detailed.lineupPredicted = isPredictedLineupType(fotmobData.lineupType);
+            }
+          }
+        } catch {
+          // Best-effort: leave as a normal scheduled match with no lineup.
+        }
       }
     }
 

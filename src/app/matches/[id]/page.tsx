@@ -50,14 +50,21 @@ export default function MatchPage({ params }: { params: { id: string } }) {
 
       {match.lineups && (
         <div className="mt-8">
-          <h2 className="text-xl font-bold mb-4">Lineup & Formation</h2>
+          <h2 className={`text-xl font-bold ${match.lineupPredicted ? "mb-1" : "mb-4"}`}>
+            {match.lineupPredicted ? "Predicted Lineup" : "Lineup & Formation"}
+          </h2>
+          {match.lineupPredicted && (
+            <p className="text-xs text-white/50 mb-4">
+              Likely XI — confirmed ~1 hour before kick-off.
+            </p>
+          )}
           <MatchLineup match={match} />
         </div>
       )}
 
       {match.events.length > 0 && <EventsTimeline match={match} />}
 
-      {match.events.length === 0 && match.status === "SCHEDULED" && (
+      {match.events.length === 0 && match.status === "SCHEDULED" && !match.lineups && (
         <div className="glass p-6 text-center text-sm text-white/50">
           Match kicks off at {formatTimeLocal(match.kickoff)} (local time) on{" "}
           {formatDate(match.kickoff)}.

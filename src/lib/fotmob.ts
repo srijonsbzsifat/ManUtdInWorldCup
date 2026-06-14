@@ -1,4 +1,4 @@
-import { normaliseName } from "@/lib/players";
+import { normaliseName, matchUnitedPlayer } from "@/lib/players";
 import type { LineupPlayer, PlayerPosition } from "@/types";
 
 const FOTMOB_BASE = "https://www.fotmob.com";
@@ -148,6 +148,9 @@ export async function fetchFotmobMatchId(
 export interface FotmobLineupPlayer {
   id: number;
   name: string;
+  shortName?: string;
+  lastName?: string;
+  shirtNumber?: number;
   positionId?: number;
   usualPlayingPositionId?: number;
   isCaptain?: boolean;
@@ -163,6 +166,9 @@ export interface FotmobMatchData {
   motm: { name: string; teamName: string } | null;
   formation: { home: string | null; away: string | null } | null;
   lineup: { home: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null; away: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null } | null;
+  /** FotMob's own flag for the lineup: "predicted" before kickoff, flips to a
+   *  confirmed value (e.g. "confirmed"/"lineup") once the official XI is out. */
+  lineupType: string | null;
 }
 
 /**
@@ -279,10 +285,23 @@ export function extractFormation(content: any): { home: string | null; away: str
   return null;
 }
 
+/** FotMob exposes shirt numbers as either numbers or numeric strings ("23"). */
+function parseShirtNumber(raw: unknown): number | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const n = parseInt(raw, 10);
+    if (!Number.isNaN(n)) return n;
+  }
+  return undefined;
+}
+
 function mapFotmobPlayer(p: any, includeLayout: boolean): FotmobLineupPlayer {
   const base: FotmobLineupPlayer = {
     id: p.id ?? 0,
     name: p.name ?? '',
+    shortName: typeof p.shortName === "string" ? p.shortName : undefined,
+    lastName: typeof p.lastName === "string" ? p.lastName : undefined,
+    shirtNumber: parseShirtNumber(p.shirtNumber ?? p.shirt),
     positionId: p.positionId,
     usualPlayingPositionId: p.usualPlayingPositionId,
     isCaptain: p.isCaptain === true,
@@ -330,6 +349,101 @@ export function extractLineup(content: any): { home: { starters: FotmobLineupPla
   };
 }
 
+/** "predicted" before kickoff; flips to a confirmed value once the XI is official. */
+export function extractLineupType(content: any): string | null {
+  const t = content?.lineup?.lineupType;
+  return typeof t === "string" ? t : null;
+}
+
+/** True unless FotMob explicitly flags the lineup as confirmed. */
+export function isPredictedLineupType(lineupType: string | null | undefined): boolean {
+  return (lineupType ?? "predicted").toLowerCase() !== "confirmed";
+}
+
+/**
+ * FotMob's curated short name for pitch labels. Confirmed/finished lineups carry
+ * a `shortName` ("Alisson"); predicted lineups omit it but `lastName` is correct
+ * ("De Bruyne"). Falls back to the last token of the full name.
+ */
+export function fotmobDisplayName(p: { shortName?: string; lastName?: string; name: string }): string {
+  return (
+    p.shortName?.trim() ||
+    p.lastName?.trim() ||
+    p.name.split(" ").filter(Boolean).pop() ||
+    p.name
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Build a lineup directly from FotMob (used for PREDICTED upcoming XIs)        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Build a `LineupPlayer[]` directly from FotMob's lineup for one team. Used for
+ * upcoming fixtures where ESPN has no roster yet, so we can't enrich an existing
+ * lineup — we construct it from FotMob's predicted XI instead. Positions come
+ * from FotMob's slot-based `positionId` + `verticalLayout.x` (same scheme used
+ * for confirmed lineups); subs fall back to the coarse usual-position map.
+ */
+export function buildLineupFromFotmob(
+  team: { starters: FotmobLineupPlayer[]; subs: FotmobLineupPlayer[] } | null | undefined
+): LineupPlayer[] {
+  if (!team) return [];
+
+  const build = (p: FotmobLineupPlayer, starter: boolean): LineupPlayer => {
+    const verticalX = p.verticalLayout?.x ?? 0.5;
+    const position: PlayerPosition = starter
+      ? getFotmobPosition(p.positionId, verticalX)
+          ?? (p.usualPlayingPositionId != null ? USUAL_POS_MAP[p.usualPlayingPositionId] : undefined)
+          ?? "MF"
+      : (p.usualPlayingPositionId != null ? USUAL_POS_MAP[p.usualPlayingPositionId] : undefined) ?? "MF";
+
+    const layout =
+      starter &&
+      p.verticalLayout &&
+      typeof p.verticalLayout.x === "number" &&
+      typeof p.verticalLayout.y === "number"
+        ? { x: p.verticalLayout.x, y: p.verticalLayout.y }
+        : undefined;
+
+    const united = matchUnitedPlayer(p.name);
+
+    return {
+      id: String(p.id || `fm-${normaliseName(p.name)}`),
+      name: p.name,
+      displayName: fotmobDisplayName(p),
+      shirtNumber: p.shirtNumber ?? 0,
+      position,
+      starter,
+      minutesPlayed: 0,
+      rating: p.performance?.rating ?? undefined,
+      captain: p.isCaptain === true,
+      ...(layout && { layout }),
+      isUnitedPlayer: Boolean(united),
+      ...(united && { unitedPlayerId: united.id }),
+    };
+  };
+
+  return [
+    ...(team.starters ?? []).map((p) => build(p, true)),
+    ...(team.subs ?? []).map((p) => build(p, false)),
+  ];
+}
+
+/**
+ * Build both-side lineups from FotMob match data. Returns null if either side is
+ * missing so callers can fall back cleanly.
+ */
+export function buildLineupsFromFotmob(
+  lineup: FotmobMatchData["lineup"]
+): { home: LineupPlayer[]; away: LineupPlayer[] } | null {
+  if (!lineup?.home || !lineup?.away) return null;
+  return {
+    home: buildLineupFromFotmob(lineup.home),
+    away: buildLineupFromFotmob(lineup.away),
+  };
+}
+
 
 export async function fetchFotmobMatchData(
   fotmobMatchId: number,
@@ -366,6 +480,7 @@ export async function fetchFotmobMatchData(
       motm: extractMotm(content),
       formation: formationExtracted,
       lineup: lineupExtracted,
+      lineupType: extractLineupType(content),
     };
     cacheSet(matchDataCache, fotmobMatchId, result);
     cacheSet(ratingsCache, fotmobMatchId, result.ratings);
@@ -484,7 +599,10 @@ function positionCategory(pos: PlayerPosition): "GK" | "DEF" | "MID" | "WF" | "F
  *   100–110   → 3-player forward line (x < 0.33 → RW; x > 0.67 → LW; else ST)
  *   ≥111      → lone striker
  */
-function getFotmobPosition(positionId: number | undefined, verticalX: number): PlayerPosition | null {
+/** Maps FotMob's `usualPlayingPositionId` (0-3) to a coarse PlayerPosition. */
+const USUAL_POS_MAP: Record<number, PlayerPosition> = { 0: 'GK', 1: 'DF', 2: 'MF', 3: 'FW' };
+
+export function getFotmobPosition(positionId: number | undefined, verticalX: number): PlayerPosition | null {
   if (!positionId) return null;
 
   if (positionId === 11) return "GK";
@@ -601,7 +719,7 @@ export function applyFotmobPositions(
     const subsMap = new Map(
       (fotmobLineup.subs ?? []).map((p) => [normaliseName(p.name), p])
     );
-    const usualPosMap: Record<number, PlayerPosition> = { 0: 'GK', 1: 'DF', 2: 'MF', 3: 'FW' };
+    const usualPosMap = USUAL_POS_MAP;
 
     const result = espnLineup.map((p) => {
       if (p.starter) {
@@ -620,6 +738,7 @@ export function applyFotmobPositions(
           return {
             ...p,
             position: finalPos,
+            displayName: fotmobDisplayName(fm),
             captain: fm.isCaptain === true || p.captain,
             ...(layout && { layout }),
           };
@@ -628,11 +747,12 @@ export function applyFotmobPositions(
         const fm = subsMap.get(normaliseName(p.name));
         if (fm) {
           const captain = fm.isCaptain === true || p.captain;
+          const displayName = fotmobDisplayName(fm);
           if (fm.usualPlayingPositionId !== undefined && fm.usualPlayingPositionId !== null) {
             const mappedPos = usualPosMap[fm.usualPlayingPositionId];
-            if (mappedPos) return { ...p, position: mappedPos, captain };
+            if (mappedPos) return { ...p, position: mappedPos, displayName, captain };
           }
-          if (captain) return { ...p, captain };
+          return { ...p, displayName, captain };
         }
       }
       return p;

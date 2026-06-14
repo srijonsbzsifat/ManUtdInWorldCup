@@ -6,6 +6,12 @@ import {
   extractFormation,
   applyFotmobRatings,
   applyFotmobPositions,
+  buildLineupFromFotmob,
+  buildLineupsFromFotmob,
+  extractLineup,
+  extractLineupType,
+  isPredictedLineupType,
+  fotmobDisplayName,
 } from "@/lib/fotmob";
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
@@ -181,6 +187,161 @@ describe("applyFotmobRatings", () => {
     ];
     const result = applyFotmobRatings(lineup, {});
     expect(result[0].rating).toBe(6.5);
+  });
+});
+
+// ── buildLineupFromFotmob ─────────────────────────────────────────────────────
+
+describe("buildLineupFromFotmob", () => {
+  it("builds LineupPlayer[] from FotMob starters + subs", () => {
+    const team = {
+      starters: [
+        { id: 1, name: "André Onana", shirtNumber: 24, positionId: 11, isCaptain: false, verticalLayout: { x: 0.5, y: 0.05 } },
+        { id: 2, name: "Bruno Fernandes", shirtNumber: 8, positionId: 81, isCaptain: true, verticalLayout: { x: 0.5, y: 0.6 } },
+      ],
+      subs: [
+        { id: 3, name: "Some Player", shirtNumber: 30, usualPlayingPositionId: 3 },
+      ],
+    };
+    const result = buildLineupFromFotmob(team);
+
+    expect(result).toHaveLength(3);
+
+    const onana = result[0];
+    expect(onana.id).toBe("1");
+    expect(onana.name).toBe("André Onana");
+    expect(onana.shirtNumber).toBe(24);
+    expect(onana.position).toBe("GK");
+    expect(onana.starter).toBe(true);
+    expect(onana.minutesPlayed).toBe(0);
+    expect(onana.layout).toEqual({ x: 0.5, y: 0.05 });
+
+    const bruno = result[1];
+    expect(bruno.position).toBe("AM"); // positionId 81, central
+    expect(bruno.captain).toBe(true);
+    expect(bruno.isUnitedPlayer).toBe(true); // matched via matchUnitedPlayer
+    expect(bruno.unitedPlayerId).toBeTruthy();
+
+    const sub = result[2];
+    expect(sub.starter).toBe(false);
+    expect(sub.position).toBe("FW"); // usualPlayingPositionId 3
+    expect(sub.layout).toBeUndefined(); // no layout for subs
+  });
+
+  it("falls back to a name-based id when FotMob id is 0/missing", () => {
+    const team = {
+      starters: [{ id: 0, name: "No Id Player", positionId: 11 }],
+      subs: [],
+    };
+    const result = buildLineupFromFotmob(team);
+    expect(result[0].id).toBe("fm-no id player");
+    expect(result[0].shirtNumber).toBe(0); // unknown shirt → 0
+  });
+
+  it("returns [] for null team", () => {
+    expect(buildLineupFromFotmob(null)).toEqual([]);
+    expect(buildLineupFromFotmob(undefined)).toEqual([]);
+  });
+});
+
+describe("extractLineup shirt numbers", () => {
+  it("parses FotMob's string shirt numbers into numbers (real-world format)", () => {
+    // FotMob predicted lineups expose shirtNumber as a string ("23") and omit subs.
+    const content = {
+      lineup: {
+        homeTeam: {
+          formation: "3-4-1-2",
+          starters: [{ id: 73462, name: "Kristoffer Nordfeldt", shirtNumber: "23", positionId: 11 }],
+        },
+        awayTeam: {
+          formation: "4-2-3-1",
+          starters: [{ id: 1, name: "Away Keeper", shirtNumber: "1", positionId: 11 }],
+        },
+      },
+    };
+    const lu = extractLineup(content);
+    expect(lu!.home!.starters[0].shirtNumber).toBe(23);
+    expect(lu!.home!.subs).toEqual([]); // missing subs → empty array
+  });
+});
+
+describe("extractLineupType / isPredictedLineupType", () => {
+  it("reads lineupType from content", () => {
+    expect(extractLineupType({ lineup: { lineupType: "predicted" } })).toBe("predicted");
+    expect(extractLineupType({ lineup: { lineupType: "confirmed" } })).toBe("confirmed");
+    expect(extractLineupType({ lineup: {} })).toBeNull();
+    expect(extractLineupType({})).toBeNull();
+  });
+
+  it("treats anything but 'confirmed' as predicted (case-insensitive)", () => {
+    expect(isPredictedLineupType("predicted")).toBe(true);
+    expect(isPredictedLineupType(null)).toBe(true); // unknown → assume predicted
+    expect(isPredictedLineupType(undefined)).toBe(true);
+    expect(isPredictedLineupType("confirmed")).toBe(false);
+    expect(isPredictedLineupType("Confirmed")).toBe(false);
+  });
+});
+
+describe("fotmobDisplayName", () => {
+  it("prefers shortName, then lastName, then last token of name", () => {
+    // confirmed/finished lineups carry shortName
+    expect(fotmobDisplayName({ name: "Alisson Becker", lastName: "Becker", shortName: "Alisson" })).toBe("Alisson");
+    expect(fotmobDisplayName({ name: "Vinícius Júnior", lastName: "Júnior", shortName: "Vinicius" })).toBe("Vinicius");
+    // predicted lineups have no shortName → lastName fixes multi-word surnames
+    expect(fotmobDisplayName({ name: "Kevin De Bruyne", lastName: "De Bruyne" })).toBe("De Bruyne");
+    // no FotMob name fields → last token fallback
+    expect(fotmobDisplayName({ name: "Marcus Rashford" })).toBe("Rashford");
+  });
+
+  it("ignores blank shortName/lastName", () => {
+    expect(fotmobDisplayName({ name: "Kevin De Bruyne", shortName: "  ", lastName: "De Bruyne" })).toBe("De Bruyne");
+  });
+});
+
+describe("buildLineupFromFotmob displayName", () => {
+  it("sets displayName from shortName/lastName", () => {
+    const team = {
+      starters: [
+        { id: 1, name: "Alisson Becker", lastName: "Becker", shortName: "Alisson", positionId: 11 },
+        { id: 2, name: "Kevin De Bruyne", lastName: "De Bruyne", positionId: 85 },
+      ],
+      subs: [],
+    };
+    const result = buildLineupFromFotmob(team);
+    expect(result[0].displayName).toBe("Alisson");
+    expect(result[1].displayName).toBe("De Bruyne");
+  });
+});
+
+describe("applyFotmobPositions displayName", () => {
+  it("sets displayName on a name-matched starter", () => {
+    const espn = [
+      { id: "a", name: "Alisson Becker", shirtNumber: 1, position: "GK" as const, starter: true, minutesPlayed: 90 },
+    ];
+    const fotmobLineup = {
+      starters: [{ id: 1, name: "Alisson Becker", lastName: "Becker", shortName: "Alisson", positionId: 11, verticalLayout: { x: 0.5, y: 0.1 } }],
+      subs: [],
+    };
+    const result = applyFotmobPositions(espn, fotmobLineup, "4-3-3");
+    expect(result[0].displayName).toBe("Alisson");
+  });
+});
+
+describe("buildLineupsFromFotmob", () => {
+  it("builds both sides", () => {
+    const lineup = {
+      home: { starters: [{ id: 1, name: "Home Keeper", positionId: 11 }], subs: [] },
+      away: { starters: [{ id: 2, name: "Away Keeper", positionId: 11 }], subs: [] },
+    };
+    const result = buildLineupsFromFotmob(lineup);
+    expect(result).not.toBeNull();
+    expect(result!.home).toHaveLength(1);
+    expect(result!.away).toHaveLength(1);
+  });
+
+  it("returns null when a side is missing", () => {
+    expect(buildLineupsFromFotmob(null)).toBeNull();
+    expect(buildLineupsFromFotmob({ home: null, away: { starters: [], subs: [] } })).toBeNull();
   });
 });
 

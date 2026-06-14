@@ -345,7 +345,7 @@ function PlayerNode({
                     "text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/60 shadow truncate text-center",
                     player.isUnitedPlayer ? "text-amber-300 font-extrabold" : "text-white/90"
                 )}>
-                    {player.name.split(' ').pop()}
+                    {player.displayName ?? player.name.split(' ').pop()}
                 </span>
             </div>
         </div>

@@ -63,6 +63,17 @@ function matchCacheKey(date: string, home: string, away: string): string {
   return `${date}|${normaliseName(home)}|${normaliseName(away)}`;
 }
 
+/**
+ * Order-independent team-name key: normalised tokens sorted alphabetically.
+ * Lets us match providers that spell a team with the tokens in a different
+ * order — e.g. ESPN "Congo DR" vs FotMob "DR Congo" both → "congo dr".
+ * Requires the SAME set of tokens, so it won't conflate genuinely different
+ * teams like "Congo" ({congo}) and "DR Congo" ({congo, dr}).
+ */
+function teamTokenKey(name: string): string {
+  return normaliseName(name).split(" ").filter(Boolean).sort().join(" ");
+}
+
 /* -------------------------------------------------------------------------- */
 /* Match ID lookup                                                            */
 /* -------------------------------------------------------------------------- */
@@ -124,6 +135,12 @@ export async function fetchFotmobMatchId(
   const allMatches = await fetchFotmobDateFixtures(date);
   const homeNorm = normaliseName(homeTeamName);
   const awayNorm = normaliseName(awayTeamName);
+  const homeKey = teamTokenKey(homeTeamName);
+  const awayKey = teamTokenKey(awayTeamName);
+
+  // Fallback candidate when no exact match exists: same token set, any order
+  // (recovers provider spelling differences like "Congo DR" / "DR Congo").
+  let fallbackId: number | null = null;
 
   for (const m of allMatches) {
     if (!m?.home?.name || !m?.away?.name) continue;
@@ -136,9 +153,18 @@ export async function fetchFotmobMatchId(
         return id;
       }
     }
+    if (
+      fallbackId === null &&
+      teamTokenKey(m.home.name) === homeKey &&
+      teamTokenKey(m.away.name) === awayKey
+    ) {
+      const id = parseInt(m.id, 10);
+      if (!isNaN(id)) fallbackId = id;
+    }
   }
-  cacheSet(matchIdCache, key, null);
-  return null;
+
+  cacheSet(matchIdCache, key, fallbackId);
+  return fallbackId;
 }
 
 /* -------------------------------------------------------------------------- */
